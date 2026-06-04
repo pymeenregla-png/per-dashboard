@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { SignIn, SignedIn, SignedOut } from "@clerk/clerk-react";
 
 const DS = {
   ink:"#0C1B2E",inkL:"#162843",inkM:"#1F3A5F",inkFade:"rgba(12,27,46,0.06)",
@@ -11,7 +12,6 @@ const DS = {
   blue:"#1A3F7A",blueL:"rgba(26,63,122,0.10)",blueT:"#1A3F7A",
   purple:"#3D2E8A",purpleL:"rgba(61,46,138,0.10)",purpleT:"#3D2E8A",
 };
-
 const AGENTES=[
   {id:"A0",nombre:"Intake & Routing",  estado:"ok",  casos_hoy:12,escalados:1,conf_prom:0.81,canal:"Todos",       color:DS.blue},
   {id:"A1",nombre:"Societario",        estado:"ok",  casos_hoy:4, escalados:0,conf_prom:0.79,canal:"Web/WA",      color:DS.inkM},
@@ -22,7 +22,6 @@ const AGENTES=[
   {id:"A6",nombre:"Consumidor SERNAC", estado:"ok",  casos_hoy:1, escalados:0,conf_prom:0.76,canal:"WA",          color:DS.slate},
   {id:"A7",nombre:"Cobranza 30D",      estado:"ok",  casos_hoy:2, escalados:0,conf_prom:0.83,canal:"Web",         color:DS.red},
 ];
-
 const PLAZOS_INIT=[
   {id:"PL-001",tipo:"Marca INAPI",cliente:"Constructora Austral Ltda.",   asunto:"AUSTRAL BUILDS — pago final registro",  fecha:"2024-06-05",diasRestantes:3, urgencia:"critica",ref:"PER-2024-0041",gestionado:false},
   {id:"PL-002",tipo:"Marca INAPI",cliente:"BrewLab Valdivia SpA",         asunto:"BREWLAB — ventana oposición cierra",    fecha:"2024-06-08",diasRestantes:6, urgencia:"alta",   ref:"PER-2024-0035",gestionado:false},
@@ -31,7 +30,6 @@ const PLAZOS_INIT=[
   {id:"PL-005",tipo:"Marca INAPI",cliente:"Tech Solutions Valdivia SpA",  asunto:"TECHSOL — publicación Diario Oficial",  fecha:"2024-06-20",diasRestantes:18,urgencia:"baja",   ref:"PER-2024-0037",gestionado:false},
   {id:"PL-006",tipo:"Contrato",   cliente:"Restaurante El Parque Ltda.",  asunto:"Renovación contrato suministro",        fecha:"2024-06-30",diasRestantes:28,urgencia:"baja",   ref:"PER-2024-0033",gestionado:false},
 ];
-
 const CASOS_INIT=[
   {id:"PER-2024-0041",folio:"0041",cliente:"Constructora Austral Ltda.",rut:"76.543.210-K",
    contacto:{nombre:"Carlos Vidal",email:"contacto@australbuilds.cl",tel:"+56 9 8765 4321"},
@@ -104,7 +102,6 @@ const CASOS_INIT=[
      {ts:"2024-05-28T09:00:00",actor:"Abogado",  tipo:"abogado",msg:"En revisión. Ajustando cláusula jurisdicción y moneda."},
    ],leccion:""},
 ];
-
 const CLIENTES=[
   {rut:"76.543.210-K",nombre:"Constructora Austral Ltda.",   tipo:"SpA",    kit:"Arranque",   suscripcion:false,casos:[0],nps:null,ingreso:"2024-06-01"},
   {rut:"15.234.567-8",nombre:"Sebastián Morales Rivera",     tipo:"Persona",kit:"Arranque",   suscripcion:false,casos:[1],nps:null,ingreso:"2024-05-31"},
@@ -112,9 +109,7 @@ const CLIENTES=[
   {rut:"14.876.543-1",nombre:"Panadería Don Lucho E.I.R.L.", tipo:"EIRL",   kit:"Arranque",   suscripcion:false,casos:[3],nps:9,   ingreso:"2024-05-28"},
   {rut:"76.987.654-3",nombre:"Tech Solutions Valdivia SpA",  tipo:"SpA",    kit:"Intermedio", suscripcion:true, casos:[4],nps:8,   ingreso:"2024-05-27"},
 ];
-
 const KPIS={casosActivos:4,hitlPendientes:1,escalados:1,slaRate:82,avgResolucion:"2.4h",throughputSemana:11,ragChunks:5768,ragFuentes:17,ragTemplates:34,casosTotal:41,npsPromedio:8.1};
-
 const RAG_FUENTES=[
   {id:"F01",nombre:"Ley 19.039 — Propiedad Industrial",      area:"Marcas",    chunks:412, estado:"ok",  fecha:"2024-05-15",size:"1.2 MB"},
   {id:"F02",nombre:"Guía INAPI Clases Niza 2023",             area:"Marcas",    chunks:287, estado:"ok",  fecha:"2024-05-15",size:"890 KB"},
@@ -134,19 +129,16 @@ const RAG_FUENTES=[
   {id:"F16",nombre:"Jurisprudencia DT 2023 fuero maternal",    area:"Laboral",   chunks:156, estado:"ok",  fecha:"2024-04-15",size:"480 KB"},
   {id:"F17",nombre:"Template NDA internacional v2",            area:"Contratos", chunks:14,  estado:"warn",fecha:"2024-02-10",size:"38 KB"},
 ];
-
 const ETAPAS_SOP=["Intake","Diagnóstico","CLM/Firma","Ejecución","Control","Cierre","Post-venta","Retro-loop"];
 const ESTADO_CFG={HITL:{label:"HITL Pendiente",dot:DS.amber,bg:DS.amberL,txt:DS.amberT},EN_REVISION:{label:"En Revisión",dot:DS.blue,bg:DS.blueL,txt:DS.blueT},ESCALADO:{label:"Escalado",dot:DS.red,bg:DS.redL,txt:DS.redT},CERRADO:{label:"Cerrado",dot:DS.green,bg:DS.greenL,txt:DS.greenT}};
 const AREA_ICON={Marcas:"M",Societario:"S",Laboral:"L",Tributario:"T",Contratos:"C",Consumidor:"CO",Cobranza:"CB"};
 const AREA_COLOR={Marcas:DS.purple,Societario:DS.blue,Laboral:DS.amber,Tributario:DS.green,Contratos:DS.slate,Consumidor:DS.inkM,Cobranza:DS.red};
 const CANAL_ICON={"Web":"ti-world","WhatsApp":"ti-brand-whatsapp","Instagram DM":"ti-brand-instagram"};
 const URGENCIA_CFG={critica:{color:DS.red,bg:DS.redL},alta:{color:DS.amber,bg:DS.amberL},media:{color:DS.blue,bg:DS.blueL},baja:{color:DS.slate,bg:DS.inkFade}};
-
 function fmtDate(ts){const d=new Date(ts);return d.toLocaleDateString("es-CL",{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"});}
 function fmtShort(ts){const d=new Date(ts);return d.toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})+" · "+d.toLocaleDateString("es-CL",{day:"2-digit",month:"short"});}
 function horasLabel(h){return h<24?`${h}h`:`${Math.floor(h/24)}d ${h%24}h`;}
 function slaStatus(sla,horas){const p=horas/sla;if(p>=1)return{label:"Vencido",color:DS.red,pct:100};if(p>=0.75)return{label:"Urgente",color:DS.amber,pct:Math.round(p*100)};return{label:"En plazo",color:DS.green,pct:Math.round(p*100)};}
-
 function Chip({label,dot,bg,txt,size=11}){return(<span style={{display:"inline-flex",alignItems:"center",gap:5,background:bg,color:txt,fontSize:size,fontFamily:"'Outfit',sans-serif",fontWeight:600,padding:"3px 9px",borderRadius:5,letterSpacing:"0.04em",whiteSpace:"nowrap"}}>{dot&&<span style={{width:5,height:5,borderRadius:"50%",background:dot,flexShrink:0}}/>}{label}</span>);}
 function Bar({pct,color,height=3}){return(<div style={{flex:1,height,background:DS.creamDD,borderRadius:2,overflow:"hidden"}}><div style={{width:`${Math.min(pct,100)}%`,height:"100%",background:color,borderRadius:2,transition:"width .5s"}}/></div>);}
 function SecLabel({children,icon}){return(<div style={{display:"flex",alignItems:"center",gap:7,margin:"0 0 10px"}}>{icon&&<i className={`ti ${icon}`} style={{fontSize:13,color:DS.slateL}} aria-hidden/>}<span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.12em"}}>{children}</span></div>);}
@@ -185,7 +177,6 @@ function Sidebar({nav,setNav,urgentes}){
     </div>
   </div>);
 }
-
 function TopBar({nav}){
   const titles={casos:"Gestión de casos",plazos:"Agenda legal crítica",clientes:"Clientes",metricas:"Métricas del sistema",sistema:"Sistema multiagente",rag:"RAG y fuentes",config:"Configuración"};
   return(<div style={{height:52,background:DS.white,borderBottom:`1px solid ${DS.creamD}`,display:"flex",alignItems:"center",padding:"0 24px",justifyContent:"space-between",flexShrink:0}}>
@@ -199,21 +190,14 @@ function TopBar({nav}){
     </div>
   </div>);
 }
-
 function ModalEditar({caso,onSave,onClose}){
   const [form,setForm]=useState({cliente:caso.cliente,rut:caso.rut,nombre:caso.contacto.nombre,email:caso.contacto.email,tel:caso.contacto.tel,asunto:caso.asunto});
   const inp={width:"100%",padding:"8px 10px",borderRadius:6,boxSizing:"border-box",border:`1px solid ${DS.creamDD}`,background:DS.white,fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"};
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:8888,display:"flex",alignItems:"center",justifyContent:"center"}}>
     <div style={{background:DS.white,borderRadius:12,width:480,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-      <div style={{padding:"20px 24px",borderBottom:`1px solid ${DS.creamD}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Editar datos del caso</span>
-        <button onClick={onClose} style={{border:"none",background:"transparent",cursor:"pointer",fontSize:20,color:DS.slateL}}>×</button>
-      </div>
+      <div style={{padding:"20px 24px",borderBottom:`1px solid ${DS.creamD}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Editar datos del caso</span><button onClick={onClose} style={{border:"none",background:"transparent",cursor:"pointer",fontSize:20,color:DS.slateL}}>×</button></div>
       <div style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:14}}>
-        {[["cliente","Empresa/Cliente"],["rut","RUT"],["nombre","Nombre contacto"],["email","Email"],["tel","Teléfono"],["asunto","Asunto"]].map(([k,lbl])=>(
-          <div key={k}><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>{lbl}</label>
-          <input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={inp} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>
-        ))}
+        {[["cliente","Empresa/Cliente"],["rut","RUT"],["nombre","Nombre contacto"],["email","Email"],["tel","Teléfono"],["asunto","Asunto"]].map(([k,lbl])=>(<div key={k}><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>{lbl}</label><input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={inp} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>))}
       </div>
       <div style={{padding:"16px 24px",borderTop:`1px solid ${DS.creamD}`,display:"flex",gap:8,justifyContent:"flex-end"}}>
         <button onClick={onClose} style={{padding:"9px 18px",borderRadius:7,border:`1px solid ${DS.creamDD}`,background:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slate}}>Cancelar</button>
@@ -222,7 +206,6 @@ function ModalEditar({caso,onSave,onClose}){
     </div>
   </div>);
 }
-
 function ModalEliminar({caso,onConfirm,onClose}){
   const [confirm,setConfirm]=useState("");
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:8888,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -240,450 +223,18 @@ function ModalEliminar({caso,onConfirm,onClose}){
     </div>
   </div>);
 }
-
-function HistItem({item}){
-  const cfgMap={sistema:{bg:DS.creamD,txt:DS.slate,lbl:"SIS"},ia:{bg:DS.goldFaint,txt:DS.gold,lbl:"IA"},abogado:{bg:DS.blueL,txt:DS.blue,lbl:"ABG"}};
-  const c=cfgMap[item.tipo]||cfgMap.sistema;
-  return(<div style={{display:"flex",gap:10,marginBottom:14}}>
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
-      <div style={{width:28,height:28,borderRadius:"50%",background:c.bg,border:`1px solid ${c.txt}30`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:800,color:c.txt}}>{c.lbl}</span></div>
-      <div style={{width:1,flex:1,background:DS.creamD,marginTop:4}}/>
-    </div>
-    <div style={{paddingBottom:4}}>
-      <div style={{display:"flex",gap:8,alignItems:"baseline",marginBottom:3}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:c.txt}}>{item.actor}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{fmtShort(item.ts)}</span></div>
-      <p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slate,margin:0,lineHeight:1.55}}>{item.msg}</p>
-    </div>
-  </div>);
-}
-
-function DocRow({doc}){
-  const colors={ia:DS.purple,abogado:DS.blue,sistema:DS.slate};const c=colors[doc.tipo]||DS.slate;
-  return(<div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:DS.creamM,borderRadius:7,marginBottom:6}}>
-    <i className="ti ti-file-description" style={{fontSize:18,color:c}} aria-hidden/>
-    <div style={{flex:1}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.ink}}>{doc.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{doc.tipo.toUpperCase()} · {doc.size}</div></div>
-    <button style={{border:"none",background:"transparent",cursor:"pointer",padding:"5px 8px",borderRadius:5,display:"flex",alignItems:"center",gap:4,color:DS.slateL,fontFamily:"'Outfit',sans-serif",fontSize:11}}
-      onMouseEnter={e=>{e.currentTarget.style.background=DS.creamDD;e.currentTarget.style.color=DS.ink;}}
-      onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=DS.slateL;}}>
-      <i className="ti ti-download" style={{fontSize:14}} aria-hidden/> Descargar
-    </button>
-  </div>);
-}
-
-function AcBtn({icon,label,sub,color,onClick}){
-  const [h,setH]=useState(false);
-  return(<button onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4,padding:"11px 13px",background:h?color:"transparent",border:`1px solid ${h?color:DS.creamDD}`,borderRadius:9,cursor:"pointer",transition:"all .15s",textAlign:"left"}}>
-    <div style={{display:"flex",alignItems:"center",gap:7}}><i className={`ti ${icon}`} style={{fontSize:15,color:h?"#fff":color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:h?"#fff":color}}>{label}</span></div>
-    <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:h?"rgba(255,255,255,.7)":DS.slateL}}>{sub}</span>
-  </button>);
-}
-function CasoRow({caso,selected,onClick}){
-  const est=ESTADO_CFG[caso.estado];const urgent=caso.estado==="ESCALADO"||caso.estado==="HITL";const ac=AREA_COLOR[caso.area]||DS.slate;
-  return(<div onClick={onClick} style={{padding:"13px 16px",borderBottom:`1px solid ${DS.creamD}`,cursor:"pointer",background:selected?DS.goldFaint:urgent?"rgba(148,96,16,0.04)":DS.white,borderLeft:`3px solid ${selected?DS.gold:urgent?DS.amber:"transparent"}`,transition:"background .12s"}}
-    onMouseEnter={e=>{if(!selected)e.currentTarget.style.background=DS.creamM;}}
-    onMouseLeave={e=>{if(!selected)e.currentTarget.style.background=urgent?"rgba(148,96,16,0.04)":DS.white;}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-      <div style={{display:"flex",alignItems:"center",gap:7}}>
-        <div style={{width:22,height:22,borderRadius:5,background:ac,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:800,color:"#fff"}}>{AREA_ICON[caso.area]||"?"}</span></div>
-        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.gold}}>#{caso.folio}</span>
-        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{caso.area}</span>
-      </div>
-      <Chip label={est.label} dot={est.dot} bg={est.bg} txt={est.txt} size={9}/>
-    </div>
-    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink,marginBottom:3,lineHeight:1.2}}>{caso.cliente}</div>
-    <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slate,marginBottom:8,lineHeight:1.4}}>{caso.asunto.length>60?caso.asunto.slice(0,60)+"…":caso.asunto}</div>
-    <div style={{display:"flex",flexDirection:"column",gap:4}}><ConfBar val={caso.confianza} compact/><SlaBar sla={caso.sla} horas={caso.horasTranscurridas} compact/></div>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
-      <div style={{display:"flex",alignItems:"center",gap:5}}><i className={`ti ${CANAL_ICON[caso.canal]||"ti-device-mobile"}`} style={{fontSize:12,color:DS.slateL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{caso.canal}</span></div>
-      <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateXL}}>{horasLabel(caso.horasTranscurridas)}</span>
-    </div>
-    {caso.plazoCritico&&<div style={{marginTop:6,display:"flex",alignItems:"center",gap:5,background:DS.redL,padding:"4px 8px",borderRadius:4}}><i className="ti ti-alert-triangle" style={{fontSize:11,color:DS.red}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.red,fontWeight:700}}>Plazo: {new Date(caso.plazoCritico).toLocaleDateString("es-CL")}</span></div>}
-  </div>);
-}
-
-function CasoDetail({caso,onAccion,onEditar,onEliminar}){
-  const [tab,setTab]=useState("acciones");
-  const [nota,setNota]=useState("");
-  const [leccion,setLeccion]=useState(caso.leccion||"");
-  const [clmTipo,setClmTipo]=useState("Contrato de servicios");
-  const est=ESTADO_CFG[caso.estado];const cerrado=caso.estado==="CERRADO";const ac=AREA_COLOR[caso.area]||DS.slate;
-  const TABS=[{id:"resumen",label:"Resumen",icon:"ti-clipboard-text"},{id:"acciones",label:"Acciones",icon:"ti-bolt"},{id:"historial",label:"Historial",icon:"ti-timeline"},{id:"docs",label:"Documentos",icon:"ti-folder",count:caso.docs.length},{id:"clm",label:"Generar doc",icon:"ti-file-plus",hidden:cerrado},{id:"cerrar",label:"Cierre",icon:"ti-circle-check",hidden:cerrado}].filter(t=>!t.hidden);
-  return(<div style={{display:"flex",flexDirection:"column",height:"100%",background:DS.white}}>
-    <div style={{padding:"18px 24px 0",borderBottom:`1px solid ${DS.creamD}`,background:DS.cream,flexShrink:0}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}>
-            <div style={{background:DS.ink,borderRadius:6,padding:"4px 12px",display:"inline-flex",alignItems:"center",border:`1px solid ${DS.goldLine}`}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:800,color:DS.gold,letterSpacing:"0.06em"}}>{caso.id}</span></div>
-            <Chip label={est.label} dot={est.dot} bg={est.bg} txt={est.txt}/>
-            <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:caso.prioridad==="CRITICA"?DS.red:caso.prioridad==="ALTA"?DS.amber:DS.blue}}>● {caso.prioridad}</span>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:26,height:26,borderRadius:5,background:ac,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:800,color:"#fff"}}>{AREA_ICON[caso.area]}</span></div>
-            <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:700,color:DS.ink}}>{caso.cliente}</span>
-          </div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL,marginTop:2}}>RUT {caso.rut} · Kit {caso.kit} · Agente {caso.agente}</div>
-        </div>
-        <div style={{display:"flex",gap:6,alignItems:"flex-start",flexShrink:0,marginLeft:12}}>
-          {!cerrado&&(<select value={caso.estado} onChange={e=>onAccion(caso.id,"cambiarEstado",e.target.value)} style={{padding:"6px 10px",borderRadius:6,border:`1px solid ${DS.creamDD}`,background:DS.white,fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.ink,cursor:"pointer",outline:"none"}}>
-            <option value="HITL">HITL Pendiente</option><option value="EN_REVISION">En Revisión</option><option value="ESCALADO">Escalado</option><option value="CERRADO">Cerrado</option>
-          </select>)}
-          <button onClick={()=>onEditar(caso)} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",borderRadius:6,border:`1px solid ${DS.creamDD}`,background:DS.white,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slate}} onMouseEnter={e=>{e.currentTarget.style.borderColor=DS.gold;e.currentTarget.style.color=DS.gold;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=DS.creamDD;e.currentTarget.style.color=DS.slate;}}><i className="ti ti-pencil" style={{fontSize:12}} aria-hidden/>Editar</button>
-          <button onClick={()=>onEliminar(caso)} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",borderRadius:6,border:`1px solid ${DS.redL}`,background:DS.redL,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.red}} onMouseEnter={e=>{e.currentTarget.style.background=DS.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background=DS.redL;e.currentTarget.style.color=DS.red;}}><i className="ti ti-trash" style={{fontSize:12}} aria-hidden/>Eliminar</button>
-        </div>
-      </div>
-      <p style={{fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic",fontSize:14,color:DS.inkM,margin:"0 0 10px",lineHeight:1.4}}>"{caso.asunto}"</p>
-      <SopBar etapa={caso.etapa}/>
-      <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:10}}><ConfBar val={caso.confianza}/><SlaBar sla={caso.sla} horas={caso.horasTranscurridas}/></div>
-      {caso.plazoCritico&&(<div style={{display:"flex",alignItems:"center",gap:8,background:caso.plazoCriticoGestionado?DS.greenL:DS.redL,border:`1px solid ${caso.plazoCriticoGestionado?DS.green:DS.red}25`,borderRadius:7,padding:"8px 12px",marginBottom:10}}>
-        <i className={`ti ${caso.plazoCriticoGestionado?"ti-circle-check":"ti-alarm"}`} style={{fontSize:15,color:caso.plazoCriticoGestionado?DS.green:DS.red}} aria-hidden/>
-        <div style={{flex:1}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:caso.plazoCriticoGestionado?DS.green:DS.red}}>Plazo crítico: </span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:caso.plazoCriticoGestionado?DS.green:DS.red}}>{new Date(caso.plazoCritico).toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long"})}</span></div>
-        {!caso.plazoCriticoGestionado&&(<button onClick={()=>onAccion(caso.id,"gestionarPlazo",null)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${DS.red}`,background:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.red,whiteSpace:"nowrap"}} onMouseEnter={e=>{e.currentTarget.style.background=DS.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=DS.red;}}>Marcar gestionado</button>)}
-      </div>)}
-      {caso.fuentesRAG.length>0&&(<div style={{display:"flex",alignItems:"flex-start",gap:7,marginBottom:10}}><i className="ti ti-database" style={{fontSize:12,color:DS.gold,marginTop:2}} aria-hidden/><div style={{flex:1}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.gold,textTransform:"uppercase",letterSpacing:"0.1em"}}>Fuentes RAG ({caso.fuentesRAG.length}): </span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slate}}>{caso.fuentesRAG.join(" · ")}</span></div></div>)}
-      <div style={{display:"flex",gap:0,marginBottom:-1,overflowX:"auto"}}>
-        {TABS.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.id?DS.gold:"transparent"}`,cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap"}}>
-          <i className={`ti ${t.icon}`} style={{fontSize:12,color:tab===t.id?DS.gold:DS.slateL}} aria-hidden/>
-          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:tab===t.id?700:400,color:tab===t.id?DS.gold:DS.slateL}}>{t.label}</span>
-          {t.count!=null&&<span style={{background:DS.creamD,borderRadius:8,fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.slate,padding:"1px 5px"}}>{t.count}</span>}
-        </button>))}
-      </div>
-    </div>
-    <div style={{flex:1,overflowY:"auto",padding:"16px 24px"}}>
-      {tab==="resumen"&&(<>
-        <SecLabel icon="ti-user">Datos del cliente</SecLabel>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-          {[{icon:"ti-user",label:"Nombre",val:caso.contacto.nombre},{icon:"ti-id",label:"RUT",val:caso.rut},{icon:"ti-mail",label:"Email",val:caso.contacto.email},{icon:"ti-phone",label:"Teléfono",val:caso.contacto.tel}].map(({icon,label,val})=>(
-            <div key={label} style={{background:DS.creamM,borderRadius:7,padding:"9px 12px",display:"flex",gap:8,alignItems:"flex-start"}}><i className={`ti ${icon}`} style={{fontSize:14,color:DS.slateL,marginTop:1,flexShrink:0}} aria-hidden/><div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:1}}>{label}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,fontWeight:500}}>{val}</div></div></div>
-          ))}
-        </div>
-        <SecLabel icon="ti-cpu">Análisis del agente IA</SecLabel>
-        <div style={{background:`${DS.gold}09`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"13px 16px",marginBottom:16}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.inkM,margin:0,lineHeight:1.65}}>{caso.resumenIA}</p></div>
-        {caso.leccion&&(<><SecLabel icon="ti-brain">Lección aprendida</SecLabel><div style={{background:DS.greenL,border:`1px solid ${DS.green}30`,borderRadius:8,padding:"12px 14px"}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.green,margin:0,lineHeight:1.6}}>{caso.leccion}</p></div></>)}
-      </>)}
-      {tab==="acciones"&&(<>
-        {caso.acciones.length>0&&(<><SecLabel icon="ti-checklist">Próximas acciones</SecLabel><div style={{marginBottom:16}}>{caso.acciones.map((a,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:DS.creamM,borderRadius:7,marginBottom:5}}><div style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${DS.slateXL}`,flexShrink:0}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink}}>{a}</span></div>))}</div></>)}
-        {!cerrado&&(<>
-          <SecLabel icon="ti-bolt">Acción rápida</SecLabel>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-            {[{id:"aprobar",icon:"ti-check",label:"Aprobar y enviar",sub:"Confirma al cliente",color:DS.green},{id:"responder",icon:"ti-send",label:"Responder cliente",sub:"Envía nota al cliente",color:DS.blue},{id:"escalar",icon:"ti-alarm",label:"Escalar a equipo",sub:"Notifica Slack",color:DS.amber},{id:"cerrar",icon:"ti-circle-check",label:"Cerrar caso",sub:"Archiva + envía RAG",color:DS.slate}].map(a=>(<AcBtn key={a.id} {...a} onClick={()=>onAccion(caso.id,a.id,{nota,leccion})}/>))}
-          </div>
-          <SecLabel icon="ti-pencil">Nota interna</SecLabel>
-          <textarea value={nota} onChange={e=>setNota(e.target.value)} placeholder="Análisis, instrucciones o notas internas…" style={{width:"100%",minHeight:80,background:DS.cream,border:`1px solid ${DS.creamDD}`,borderRadius:8,boxSizing:"border-box",padding:"10px 13px",fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/>
-        </>)}
-      </>)}
-      {tab==="historial"&&(<><SecLabel icon="ti-timeline">Línea de tiempo</SecLabel>{caso.historial.map((h,i)=><HistItem key={i} item={h}/>)}</>)}
-      {tab==="docs"&&(<>
-        <SecLabel icon="ti-folder">Documentos del caso</SecLabel>
-        {caso.docs.length===0?<p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL}}>Sin documentos.</p>:caso.docs.map((d,i)=><DocRow key={i} doc={d}/>)}
-        {!cerrado&&<button style={{display:"flex",alignItems:"center",gap:7,padding:"9px 14px",background:"transparent",border:`1px dashed ${DS.slateXL}`,borderRadius:7,cursor:"pointer",marginTop:8,fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slate}} onMouseEnter={e=>{e.currentTarget.style.borderColor=DS.gold;e.currentTarget.style.color=DS.gold;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=DS.slateXL;e.currentTarget.style.color=DS.slate;}}><i className="ti ti-upload" style={{fontSize:15}} aria-hidden/>Subir documento</button>}
-      </>)}
-      {tab==="clm"&&!cerrado&&(<>
-        <SecLabel icon="ti-file-plus">Generador CLM</SecLabel>
-        <div style={{background:DS.creamM,borderRadius:8,padding:"16px"}}>
-          <select value={clmTipo} onChange={e=>setClmTipo(e.target.value)} style={{width:"100%",padding:"8px 12px",borderRadius:7,border:`1px solid ${DS.creamDD}`,background:DS.white,fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none",cursor:"pointer",marginBottom:12}}>
-            {["Contrato de servicios","NDA","Mandato INAPI","Propuesta kit","Carta SII","Contrato de trabajo","Finiquito","T&C e-commerce"].map(o=>(<option key={o}>{o}</option>))}
-          </select>
-          <button onClick={()=>onAccion(caso.id,"clm",clmTipo)} style={{width:"100%",padding:"10px",background:DS.ink,border:`1px solid ${DS.goldLine}`,borderRadius:7,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.gold,display:"flex",alignItems:"center",justifyContent:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=DS.inkM} onMouseLeave={e=>e.currentTarget.style.background=DS.ink}><i className="ti ti-wand" style={{fontSize:16}} aria-hidden/>Generar con IA → n8n</button>
-        </div>
-      </>)}
-      {tab==="cerrar"&&!cerrado&&(<>
-        <SecLabel icon="ti-brain">Lección aprendida → RAG</SecLabel>
-        <div style={{background:`${DS.gold}08`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"12px 14px",marginBottom:12}}>
-          <p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL,margin:"0 0 8px",lineHeight:1.5}}>Esta lección se enviará al RAG para mejorar futuros análisis.</p>
-          <textarea value={leccion} onChange={e=>setLeccion(e.target.value)} placeholder="Ej: 'Art. 192 CT aplica incluso en segunda omisión…'" style={{width:"100%",minHeight:80,background:DS.white,border:`1px solid ${DS.goldLine}`,borderRadius:7,boxSizing:"border-box",padding:"9px 12px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.goldLine}/>
-        </div>
-        <SecLabel icon="ti-bolt">Acción final</SecLabel>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          {[{id:"aprobar",icon:"ti-check",label:"Aprobar y enviar",sub:"Confirma al cliente",color:DS.green},{id:"responder",icon:"ti-send",label:"Responder cliente",sub:"Envía nota al cliente",color:DS.blue},{id:"escalar",icon:"ti-alarm",label:"Escalar a equipo",sub:"Notifica Slack",color:DS.amber},{id:"cerrar",icon:"ti-circle-check",label:"Cerrar caso",sub:"Archiva + envía RAG",color:DS.slate}].map(a=>(<AcBtn key={a.id} {...a} onClick={()=>onAccion(caso.id,a.id,{nota,leccion})}/>))}
-        </div>
-      </>)}
-    </div>
-  </div>);
-}
-function PantallaCasos({showToast}){
-  const [selId,setSelId]=useState(CASOS_INIT[0].id);
-  const [search,setSearch]=useState("");
-  const [filtroEstado,setFiltroEstado]=useState("TODOS");
-  const [casos,setCasos]=useState(CASOS_INIT);
-  const [modalEditar,setModalEditar]=useState(null);
-  const [modalEliminar,setModalEliminar]=useState(null);
-  const selCaso=casos.find(c=>c.id===selId);
-  const filtered=casos.filter(c=>{
-    const okE=filtroEstado==="TODOS"||c.estado===filtroEstado;
-    const q=search.toLowerCase();
-    const okS=!q||c.cliente.toLowerCase().includes(q)||c.id.toLowerCase().includes(q)||c.rut.includes(q)||c.asunto.toLowerCase().includes(q)||c.resumenIA.toLowerCase().includes(q);
-    return okE&&okS;
-  });
-  function handleAccion(casoId,tipo,data){
-    if(tipo==="cambiarEstado"){setCasos(p=>p.map(c=>c.id===casoId?{...c,estado:data}:c));showToast(`Estado → ${ESTADO_CFG[data]?.label||data}`,"ok");return;}
-    if(tipo==="gestionarPlazo"){setCasos(p=>p.map(c=>c.id===casoId?{...c,plazoCriticoGestionado:true}:c));showToast("Plazo marcado como gestionado","ok");return;}
-    const mapa={aprobar:"EN_REVISION",escalar:"ESCALADO",cerrar:"CERRADO"};
-    const msgs={aprobar:"Documento aprobado y enviado al cliente",responder:"Respuesta enviada",escalar:"Caso escalado — Slack notificado",cerrar:"Caso cerrado. Lección enviada al RAG",clm:`Documento "${data}" generado por n8n`};
-    if(mapa[tipo])setCasos(p=>p.map(c=>c.id===casoId?{...c,estado:mapa[tipo]}:c));
-    showToast(msgs[tipo]||"Acción ejecutada",tipo==="escalar"?"warn":"ok");
-  }
-  function handleSaveEditar(form){setCasos(p=>p.map(c=>c.id===modalEditar.id?{...c,cliente:form.cliente,rut:form.rut,asunto:form.asunto,contacto:{nombre:form.nombre,email:form.email,tel:form.tel}}:c));setModalEditar(null);showToast("Datos actualizados","ok");}
-  function handleEliminar(){const id=modalEliminar.id;setCasos(p=>p.filter(c=>c.id!==id));const next=casos.find(c=>c.id!==id);if(next)setSelId(next.id);setModalEliminar(null);showToast("Caso eliminado","warn");}
-  return(<>
-    {modalEditar&&<ModalEditar caso={modalEditar} onSave={handleSaveEditar} onClose={()=>setModalEditar(null)}/>}
-    {modalEliminar&&<ModalEliminar caso={modalEliminar} onConfirm={handleEliminar} onClose={()=>setModalEliminar(null)}/>}
-    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
-      <div style={{width:300,background:DS.white,borderRight:`1px solid ${DS.creamD}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        <div style={{padding:"14px 16px 10px",background:DS.cream,borderBottom:`1px solid ${DS.creamD}`,flexShrink:0}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Casos activos</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{filtered.length} casos</span></div>
-          <div style={{position:"relative",marginBottom:10}}><i className="ti ti-search" style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,color:DS.slateL}} aria-hidden/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cliente, RUT, asunto, análisis IA…" style={{width:"100%",paddingLeft:30,height:32,background:DS.white,border:`1px solid ${DS.creamDD}`,borderRadius:7,boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>
-          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{["TODOS","HITL","ESCALADO","EN_REVISION","CERRADO"].map(e=>{const cfg=ESTADO_CFG[e];const a=filtroEstado===e;return(<button key={e} onClick={()=>setFiltroEstado(e)} style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:600,padding:"3px 8px",borderRadius:4,cursor:"pointer",border:`1px solid ${a?(cfg?.dot||DS.gold):DS.creamDD}`,background:a?(cfg?cfg.bg:DS.goldFaint):"transparent",color:a?(cfg?.txt||DS.gold):DS.slateL}}>{e==="TODOS"?"Todos":cfg?.label||e}</button>);})}</div>
-        </div>
-        <div style={{flex:1,overflowY:"auto"}}>
-          {filtered.length===0&&<div style={{padding:"40px 20px",textAlign:"center"}}><i className="ti ti-search-off" style={{fontSize:32,color:DS.slateXL,display:"block",marginBottom:8}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL}}>Sin resultados</span></div>}
-          {filtered.map(c=>(<CasoRow key={c.id} caso={c} selected={selId===c.id} onClick={()=>setSelId(c.id)}/>))}
-        </div>
-      </div>
-      <div style={{flex:1,overflow:"hidden"}}>
-        {selCaso?<CasoDetail caso={selCaso} onAccion={handleAccion} onEditar={c=>setModalEditar(c)} onEliminar={c=>setModalEliminar(c)}/>
-        :<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:12}}><i className="ti ti-clipboard-text" style={{fontSize:40,color:DS.slateXL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:DS.slateL}}>Selecciona un caso</span></div>}
-      </div>
-    </div>
-  </>);
-}
-
-function PantallaPlazos(){
-  const [plazos,setPlazos]=useState(PLAZOS_INIT);
-  const grupos=[{label:"Críticos (≤7 días)",items:plazos.filter(p=>p.diasRestantes<=7&&!p.gestionado)},{label:"Próximos (8–15 días)",items:plazos.filter(p=>p.diasRestantes>7&&p.diasRestantes<=15&&!p.gestionado)},{label:"En el horizonte",items:plazos.filter(p=>p.diasRestantes>15&&!p.gestionado)},{label:"Gestionados",items:plazos.filter(p=>p.gestionado)}];
-  return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}>
-    <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>Agenda Legal Crítica</h1>
-    <p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:"0 0 24px"}}>Vencimientos activos — marcas INAPI, SII, DT y contratos</p>
-    {grupos.map(({label,items})=>(items.length>0&&(<div key={label} style={{marginBottom:28}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.1em"}}>{label}</span><div style={{flex:1,height:1,background:DS.creamD}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{items.length}</span></div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {items.map(p=>{const uc=URGENCIA_CFG[p.urgencia];const diasLabel=p.gestionado?"✓":p.diasRestantes===0?"HOY":p.diasRestantes===1?"Mañana":`${p.diasRestantes}d`;
-          return(<Card key={p.id} style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:14,opacity:p.gestionado?0.65:1}}>
-            <div style={{width:56,height:56,borderRadius:10,background:p.gestionado?DS.greenL:uc.bg,border:`1px solid ${p.gestionado?DS.green:uc.color}30`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:700,color:p.gestionado?DS.green:uc.color,lineHeight:1}}>{diasLabel}</span>
-              {!p.gestionado&&p.diasRestantes>1&&<span style={{fontFamily:"'Outfit',sans-serif",fontSize:8,color:uc.color,fontWeight:600}}>días</span>}
-            </div>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:uc.color,background:uc.bg,padding:"2px 8px",borderRadius:4}}>{p.tipo}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{p.ref}</span></div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink,marginBottom:2}}>{p.cliente}</div>
-              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slate}}>{p.asunto}</div>
-            </div>
-            <div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
-              <div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>Vence</div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:15,fontWeight:700,color:DS.ink}}>{new Date(p.fecha).toLocaleDateString("es-CL",{day:"2-digit",month:"short"})}</div></div>
-              {!p.gestionado&&(<button onClick={()=>setPlazos(prev=>prev.map(x=>x.id===p.id?{...x,gestionado:true}:x))} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${DS.green}`,background:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.green,whiteSpace:"nowrap"}} onMouseEnter={e=>{e.currentTarget.style.background=DS.green;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=DS.green;}}>Marcar gestionado</button>)}
-            </div>
-          </Card>);
-        })}
-      </div>
-    </div>)))}
-  </div>);
-}
-
-function PantallaClientes(){
-  const [sel,setSel]=useState(null);const cliente=CLIENTES[sel];
-  return(<div style={{display:"flex",flex:1,overflow:"hidden"}}>
-    <div style={{width:280,background:DS.white,borderRight:`1px solid ${DS.creamD}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-      <div style={{padding:"16px",background:DS.cream,borderBottom:`1px solid ${DS.creamD}`}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Clientes</span></div>
-      <div style={{flex:1,overflowY:"auto"}}>
-        {CLIENTES.map((c,i)=>(<div key={c.rut} onClick={()=>setSel(i)} style={{padding:"13px 16px",borderBottom:`1px solid ${DS.creamD}`,cursor:"pointer",background:sel===i?DS.goldFaint:DS.white,borderLeft:`3px solid ${sel===i?DS.gold:"transparent"}`,transition:"all .12s"}} onMouseEnter={e=>{if(sel!==i)e.currentTarget.style.background=DS.creamM;}} onMouseLeave={e=>{if(sel!==i)e.currentTarget.style.background=DS.white;}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:3}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink}}>{c.nombre}</span>{c.suscripcion&&<Chip label="Suscripción" bg={DS.greenL} txt={DS.greenT} size={9}/>}</div>
-          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{c.tipo} · {c.kit} · {c.casos.length} caso{c.casos.length!==1?"s":""}</div>
-        </div>))}
-      </div>
-    </div>
-    <div style={{flex:1,overflowY:"auto",background:DS.creamM,padding:"28px 32px"}}>
-      {!cliente?(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:12}}><i className="ti ti-building-store" style={{fontSize:40,color:DS.slateXL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:DS.slateL}}>Selecciona un cliente</span></div>):(
-        <>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-            <div style={{width:44,height:44,borderRadius:10,background:DS.ink,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${DS.goldLine}`}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:700,color:DS.gold}}>{cliente.nombre[0]}</span></div>
-            <div><h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:700,color:DS.ink,margin:0}}>{cliente.nombre}</h2><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>RUT {cliente.rut} · {cliente.tipo}</div></div>
-            {cliente.suscripcion&&<Chip label="Abono mensual activo" bg={DS.greenL} txt={DS.greenT}/>}
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
-            {[{label:"Kit activo",val:cliente.kit,icon:"ti-package"},{label:"Casos total",val:cliente.casos.length,icon:"ti-folder"},{label:"NPS",val:cliente.nps??"-",icon:"ti-star"}].map(({label,val,icon})=>(
-              <Card key={label} style={{padding:"14px 16px"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><i className={`ti ${icon}`} style={{fontSize:16,color:DS.gold}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</span></div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:700,color:DS.ink}}>{val}</div></Card>
-            ))}
-          </div>
-          <SecLabel icon="ti-list">Asuntos</SecLabel>
-          {cliente.casos.map(idx=>{const c=CASOS_INIT[idx];if(!c)return null;const est=ESTADO_CFG[c.estado];return(
-            <Card key={c.id} style={{padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-              <div style={{width:28,height:28,borderRadius:6,background:AREA_COLOR[c.area]||DS.slate,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:800,color:"#fff"}}>{AREA_ICON[c.area]||"?"}</span></div>
-              <div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.gold}}>#{c.folio}</span><Chip label={est.label} dot={est.dot} bg={est.bg} txt={est.txt} size={9}/></div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink}}>{c.asunto}</div></div>
-            </Card>
-          );})}
-        </>
-      )}
-    </div>
-  </div>);
-}
-
-function PantallaMetricas(){
-  const kpis=[{label:"Throughput semana",val:`${KPIS.throughputSemana} casos`,icon:"ti-trending-up",color:DS.green},{label:"SLA cumplido",val:`${KPIS.slaRate}%`,icon:"ti-clock",color:DS.blue},{label:"Tiempo promedio",val:KPIS.avgResolucion,icon:"ti-hourglass",color:DS.gold},{label:"NPS promedio",val:KPIS.npsPromedio,icon:"ti-star",color:DS.green},{label:"Casos totales",val:KPIS.casosTotal,icon:"ti-folder",color:DS.inkM},{label:"Chunks RAG",val:KPIS.ragChunks.toLocaleString("es-CL"),icon:"ti-database",color:DS.purple}];
-  const porArea=["Marcas","Societario","Laboral","Tributario","Contratos"].map((a,i)=>({area:a,count:[6,4,2,5,3][i],color:AREA_COLOR[a]}));
-  const max=Math.max(...porArea.map(p=>p.count));
-  return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}>
-    <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 20px"}}>Métricas del sistema</h1>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:24}}>
-      {kpis.map(({label,val,icon,color})=>(<Card key={label} style={{padding:"18px 20px"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><i className={`ti ${icon}`} style={{fontSize:18,color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</span></div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:32,fontWeight:700,color:DS.ink}}>{val}</div></Card>))}
-    </div>
-    <Card style={{padding:"20px 24px",marginBottom:16}}>
-      <SecLabel icon="ti-chart-bar">Casos por área (semana)</SecLabel>
-      {porArea.map(({area,count,color})=>(<div key={area} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,width:90}}>{area}</span><div style={{flex:1,height:20,background:DS.creamM,borderRadius:4,overflow:"hidden"}}><div style={{width:`${(count/max)*100}%`,height:"100%",background:color,borderRadius:4,transition:"width .6s"}}/></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:DS.ink,minWidth:16}}>{count}</span></div>))}
-    </Card>
-    <Card style={{padding:"20px 24px"}}>
-      <SecLabel icon="ti-database">Estado del RAG</SecLabel>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginTop:8}}>
-        {[{label:"Fuentes indexadas",val:KPIS.ragFuentes,icon:"ti-file-text"},{label:"Chunks totales",val:KPIS.ragChunks.toLocaleString("es-CL"),icon:"ti-layers"},{label:"Templates RAG",val:KPIS.ragTemplates,icon:"ti-template"}].map(({label,val,icon})=>(<div key={label} style={{background:DS.creamM,borderRadius:8,padding:"12px 14px"}}><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:6}}><i className={`ti ${icon}`} style={{fontSize:14,color:DS.gold}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</span></div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:700,color:DS.ink}}>{val}</div></div>))}
-      </div>
-    </Card>
-  </div>);
-}
-function PantallaSystem(){
-  const estadoCfg={ok:{color:DS.green,label:"Operativo",icon:"ti-circle-check"},warn:{color:DS.amber,label:"Atención",icon:"ti-alert-triangle"},err:{color:DS.red,label:"Intervención",icon:"ti-alert-circle"}};
-  return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}>
-    <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>Sistema multiagente</h1>
-    <p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:"0 0 20px"}}>Estado en tiempo real de los agentes A0–A7</p>
-    <Card style={{padding:"16px 20px",marginBottom:20,background:DS.ink,border:`1px solid ${DS.goldLine}`}}>
-      <div style={{display:"flex",alignItems:"center",gap:12}}>
-        <div style={{width:44,height:44,borderRadius:10,background:DS.goldFaint,border:`1px solid ${DS.goldLine}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-brain" style={{fontSize:22,color:DS.gold}} aria-hidden/></div>
-        <div style={{flex:1}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.gold}}>Cerebro AG — Orquestador principal</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>Coordina A0–A7 · JSON message protocol · Supabase agent registry</div></div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:DS.green,boxShadow:`0 0 8px ${DS.green}`}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.green}}>Operativo</span></div>
-      </div>
-    </Card>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
-      {AGENTES.map(ag=>{const s=estadoCfg[ag.estado];const escPct=ag.casos_hoy>0?Math.round((ag.escalados/ag.casos_hoy)*100):0;return(
-        <Card key={ag.id} style={{padding:"16px 18px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{width:36,height:36,borderRadius:8,background:ag.color,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:800,color:"#fff"}}>{ag.id}</span></div>
-              <div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink}}>{ag.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{ag.canal}</div></div>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:5}}><i className={`ti ${s.icon}`} style={{fontSize:14,color:s.color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:s.color}}>{s.label}</span></div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
-            {[{label:"Casos hoy",val:ag.casos_hoy},{label:"Escalados",val:ag.escalados},{label:"Escalación",val:`${escPct}%`}].map(({label,val})=>(<div key={label} style={{background:DS.creamM,borderRadius:6,padding:"6px 8px"}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:8,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:2}}>{label}</div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>{val}</div></div>))}
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.slateL,width:56}}>Conf. media</span><Bar pct={Math.round(ag.conf_prom*100)} color={ag.conf_prom>=0.7?DS.green:ag.conf_prom>=0.55?DS.amber:DS.red}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:ag.conf_prom>=0.7?DS.green:ag.conf_prom>=0.55?DS.amber:DS.red,minWidth:28}}>{Math.round(ag.conf_prom*100)}%</span></div>
-          {ag.estado!=="ok"&&(<div style={{marginTop:8,display:"flex",alignItems:"center",gap:6,background:ag.estado==="err"?DS.redL:DS.amberL,borderRadius:5,padding:"5px 9px"}}><i className="ti ti-alert-triangle" style={{fontSize:12,color:ag.estado==="err"?DS.red:DS.amber}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:ag.estado==="err"?DS.red:DS.amber}}>{ag.estado==="err"?"Requiere intervención del abogado":"Tasa de escalación elevada"}</span></div>)}
-        </Card>
-      );})}
-    </div>
-  </div>);
-}
-
-function PantallaRAG(){
-  const [filtroArea,setFiltroArea]=useState("TODAS");
-  const [busqueda,setBusqueda]=useState("");
-  const areas=["TODAS",...[...new Set(RAG_FUENTES.map(f=>f.area))]];
-  const totalChunks=RAG_FUENTES.reduce((s,f)=>s+f.chunks,0);
-  const porArea=[...new Set(RAG_FUENTES.map(f=>f.area))].map(a=>({area:a,chunks:RAG_FUENTES.filter(f=>f.area===a).reduce((s,f)=>s+f.chunks,0),fuentes:RAG_FUENTES.filter(f=>f.area===a).length,color:AREA_COLOR[a]||DS.slate}));
-  const filtered=RAG_FUENTES.filter(f=>{const okA=filtroArea==="TODAS"||f.area===filtroArea;const q=busqueda.toLowerCase();const okB=!q||f.nombre.toLowerCase().includes(q)||f.area.toLowerCase().includes(q);return okA&&okB;});
-  return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}>
-    <div style={{marginBottom:20}}><h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>RAG y Fuentes</h1><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:0}}>Base de conocimiento legal vectorial — {RAG_FUENTES.length} fuentes · {totalChunks.toLocaleString("es-CL")} chunks</p></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
-      {[{label:"Fuentes indexadas",val:RAG_FUENTES.length,icon:"ti-file-text",color:DS.blue},{label:"Chunks totales",val:totalChunks.toLocaleString("es-CL"),icon:"ti-layers",color:DS.purple},{label:"Templates",val:KPIS.ragTemplates,icon:"ti-template",color:DS.gold},{label:"Alertas",val:RAG_FUENTES.filter(f=>f.estado==="warn").length,icon:"ti-alert-triangle",color:DS.amber}].map(({label,val,icon,color})=>(<Card key={label} style={{padding:"16px 18px"}}><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:6}}><i className={`ti ${icon}`} style={{fontSize:16,color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</span></div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink}}>{val}</div></Card>))}
-    </div>
-    <Card style={{padding:"20px 24px",marginBottom:20}}>
-      <SecLabel icon="ti-chart-bar">Distribución de chunks por área</SecLabel>
-      {porArea.sort((a,b)=>b.chunks-a.chunks).map(({area,chunks,fuentes,color})=>(<div key={area} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,width:100}}>{area}</span><div style={{flex:1,height:22,background:DS.creamM,borderRadius:4,overflow:"hidden"}}><div style={{width:`${(chunks/totalChunks)*100}%`,height:"100%",background:color,borderRadius:4,transition:"width .6s"}}/></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.ink,minWidth:60,textAlign:"right"}}>{chunks.toLocaleString("es-CL")}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL,minWidth:70}}>{fuentes} fuente{fuentes!==1?"s":""}</span></div>))}
-    </Card>
-    <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
-      <div style={{position:"relative",flex:1,maxWidth:320}}><i className="ti ti-search" style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,color:DS.slateL}} aria-hidden/><input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar fuente…" style={{width:"100%",paddingLeft:30,height:34,background:DS.white,border:`1px solid ${DS.creamDD}`,borderRadius:7,boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>
-      {areas.map(a=>(<button key={a} onClick={()=>setFiltroArea(a)} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${filtroArea===a?DS.gold:DS.creamDD}`,background:filtroArea===a?DS.goldFaint:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:filtroArea===a?700:400,color:filtroArea===a?DS.gold:DS.slate}}>{a}</button>))}
-    </div>
-    <Card style={{overflow:"hidden"}}>
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr style={{background:DS.creamM}}>{["ID","Nombre","Área","Chunks","Tamaño","Actualización","Estado"].map(h=>(<th key={h} style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",textAlign:"left",borderBottom:`1px solid ${DS.creamD}`,whiteSpace:"nowrap"}}>{h}</th>))}</tr></thead>
-          <tbody>{filtered.map((f,i)=>(<tr key={f.id} style={{borderBottom:`1px solid ${DS.creamD}`,background:i%2===0?DS.white:DS.cream}}>
-            <td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{f.id}</td>
-            <td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.ink,maxWidth:240}}><div style={{display:"flex",alignItems:"center",gap:7}}><i className="ti ti-file-text" style={{fontSize:14,color:AREA_COLOR[f.area]||DS.slate,flexShrink:0}} aria-hidden/>{f.nombre}</div></td>
-            <td style={{padding:"10px 14px"}}><span style={{background:(AREA_COLOR[f.area]||DS.slate)+"20",color:AREA_COLOR[f.area]||DS.slate,padding:"2px 8px",borderRadius:4,fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700}}>{f.area}</span></td>
-            <td style={{padding:"10px 14px",fontFamily:"'Cormorant Garamond',serif",fontSize:16,fontWeight:700,color:DS.ink}}>{f.chunks.toLocaleString("es-CL")}</td>
-            <td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{f.size}</td>
-            <td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{new Date(f.fecha).toLocaleDateString("es-CL")}</td>
-            <td style={{padding:"10px 14px"}}>{f.estado==="ok"?<span style={{display:"inline-flex",alignItems:"center",gap:4,background:DS.greenL,color:DS.green,padding:"2px 8px",borderRadius:4,fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700}}><i className="ti ti-circle-check" style={{fontSize:12}} aria-hidden/>OK</span>:<span style={{display:"inline-flex",alignItems:"center",gap:4,background:DS.amberL,color:DS.amber,padding:"2px 8px",borderRadius:4,fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700}}><i className="ti ti-alert-triangle" style={{fontSize:12}} aria-hidden/>Revisar</span>}</td>
-          </tr>))}</tbody>
-        </table>
-      </div>
-    </Card>
-  </div>);
-}
-function PantallaConfig({showToast}){
-  const [umbralHITL,setUmbralHITL]=useState(65);
-  const [slaDefault,setSlaDefault]=useState(48);
-  const [notifSlack,setNotifSlack]=useState(true);
-  const [notifEmail,setNotifEmail]=useState(true);
-  const [usuarios,setUsuarios]=useState([{id:1,nombre:"Kurt Leupin",email:"kurt@pymeenregla.cl",rol:"Admin",activo:true},{id:2,nombre:"Abogado PER",email:"abogado@pymeenregla.cl",rol:"Abogado",activo:true}]);
-  const [nuevoNombre,setNuevoNombre]=useState("");
-  const [nuevoEmail,setNuevoEmail]=useState("");
-  const conexiones=[
-    {nombre:"Supabase (PostgreSQL + pgvector)",estado:"ok",url:"kwyicmnbquqpuoxmsxgt.supabase.co",detalle:"São Paulo · 5.768 chunks"},
-    {nombre:"n8n (Orquestador workflows)",      estado:"ok",url:"n8n.srv1108143.hstgr.cloud",      detalle:"Hostinger VPS 8GB · A0–A7 activos"},
-    {nombre:"Slack (Notificaciones HITL)",      estado:"ok",url:"pyme-en-regla.slack.com",         detalle:"7 canales · #per-general activo"},
-    {nombre:"Gmail (Confirmaciones cliente)",   estado:"ok",url:"OAuth2 per-n8n-496803",           detalle:"Envíos automáticos activos"},
-    {nombre:"OpenAI (Embeddings)",              estado:"ok",url:"text-embedding-3-small",          detalle:"Vectorización de documentos"},
-    {nombre:"Claude (Agentes IA)",              estado:"ok",url:"claude-sonnet + haiku",           detalle:"A0 Haiku · A1–A7 Sonnet"},
-  ];
-  const inp={padding:"8px 10px",borderRadius:6,border:`1px solid ${DS.creamDD}`,fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none",background:DS.white};
-  function agregarUsuario(){if(!nuevoNombre||!nuevoEmail)return;setUsuarios(p=>[...p,{id:Date.now(),nombre:nuevoNombre,email:nuevoEmail,rol:"Abogado",activo:true}]);setNuevoNombre("");setNuevoEmail("");showToast("Usuario agregado","ok");}
-  return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}>
-    <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>Configuración</h1>
-    <p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:"0 0 24px"}}>Parámetros del sistema, usuarios y conexiones</p>
-
-    <Card style={{padding:"20px 24px",marginBottom:20}}>
-      <SecLabel icon="ti-adjustments">Parámetros del sistema</SecLabel>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginTop:12}}>
-        <div>
-          <label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:6}}>Umbral HITL (confianza mínima)</label>
-          <div style={{display:"flex",alignItems:"center",gap:12}}><input type="range" min={30} max={95} value={umbralHITL} onChange={e=>setUmbralHITL(Number(e.target.value))} style={{flex:1,accentColor:DS.gold}}/><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:700,color:DS.ink,minWidth:42}}>{umbralHITL}%</span></div>
-          <p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL,margin:"4px 0 0"}}>Casos con confianza menor van a revisión humana</p>
-        </div>
-        <div>
-          <label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:6}}>SLA por defecto (horas)</label>
-          <div style={{display:"flex",alignItems:"center",gap:12}}><input type="range" min={6} max={120} step={6} value={slaDefault} onChange={e=>setSlaDefault(Number(e.target.value))} style={{flex:1,accentColor:DS.gold}}/><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:700,color:DS.ink,minWidth:42}}>{slaDefault}h</span></div>
-          <p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL,margin:"4px 0 0"}}>Tiempo máximo de respuesta para casos estándar</p>
-        </div>
-      </div>
-      <div style={{display:"flex",gap:20,marginTop:20}}>
-        {[{label:"Notificaciones Slack",val:notifSlack,set:setNotifSlack},{label:"Notificaciones Email",val:notifEmail,set:setNotifEmail}].map(({label,val,set})=>(<div key={label} style={{display:"flex",alignItems:"center",gap:10}}>
-          <button onClick={()=>set(!val)} style={{width:44,height:24,borderRadius:12,border:"none",background:val?DS.green:DS.slateXL,cursor:"pointer",position:"relative",transition:"background .2s"}}><div style={{width:18,height:18,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:val?23:3,transition:"left .2s"}}/></button>
-          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink}}>{label}</span>
-        </div>))}
-      </div>
-      <div style={{marginTop:16,display:"flex",justifyContent:"flex-end"}}><button onClick={()=>showToast("Configuración guardada","ok")} style={{padding:"9px 20px",borderRadius:7,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.gold}}>Guardar cambios</button></div>
-    </Card>
-
-    <Card style={{padding:"20px 24px",marginBottom:20}}>
-      <SecLabel icon="ti-users">Abogados y usuarios</SecLabel>
-      <div style={{marginBottom:16}}>
-        {usuarios.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${DS.creamD}`}}>
-          <div style={{width:34,height:34,borderRadius:"50%",background:DS.ink,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:DS.gold}}>{u.nombre.split(" ").map(n=>n[0]).join("").slice(0,2)}</span></div>
-          <div style={{flex:1}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:u.activo?DS.ink:DS.slateL}}>{u.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{u.email} · {u.rol}</div></div>
-          <Chip label={u.rol} bg={u.rol==="Admin"?DS.goldFaint:DS.blueL} txt={u.rol==="Admin"?DS.gold:DS.blue} size={9}/>
-          <button onClick={()=>setUsuarios(p=>p.map(x=>x.id===u.id?{...x,activo:!x.activo}:x))} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${u.activo?DS.creamDD:DS.green}`,background:u.activo?"transparent":DS.greenL,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,color:u.activo?DS.slateL:DS.green}}>{u.activo?"Desactivar":"Activar"}</button>
-        </div>))}
-      </div>
-      <div style={{background:DS.creamM,borderRadius:8,padding:"14px 16px"}}>
-        <p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.slate,margin:"0 0 10px"}}>Agregar nuevo usuario</p>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <input value={nuevoNombre} onChange={e=>setNuevoNombre(e.target.value)} placeholder="Nombre completo" style={{...inp,flex:1,minWidth:140}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/>
-          <input value={nuevoEmail} onChange={e=>setNuevoEmail(e.target.value)} placeholder="Email" style={{...inp,flex:1,minWidth:180}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/>
-          <button onClick={agregarUsuario} style={{padding:"8px 16px",borderRadius:6,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.gold}}>Agregar</button>
-        </div>
-      </div>
-    </Card>
-
-    <Card style={{padding:"20px 24px"}}>
-      <SecLabel icon="ti-plug-connected">Conexiones del sistema</SecLabel>
-      <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:8}}>
-        {conexiones.map(c=>(<div key={c.nombre} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:DS.creamM,borderRadius:8}}>
-          <div style={{width:8,height:8,borderRadius:"50%",background:c.estado==="ok"?DS.green:DS.red,boxShadow:`0 0 6px ${c.estado==="ok"?DS.green:DS.red}`,flexShrink:0}}/>
-          <div style={{flex:1}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink}}>{c.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{c.url} · {c.detalle}</div></div>
-          <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:c.estado==="ok"?DS.green:DS.red,background:c.estado==="ok"?DS.greenL:DS.redL,padding:"3px 8px",borderRadius:4}}>{c.estado==="ok"?"Conectado":"Error"}</span>
-        </div>))}
-      </div>
-    </Card>
-  </div>);
-}
+function HistItem({item}){const cfgMap={sistema:{bg:DS.creamD,txt:DS.slate,lbl:"SIS"},ia:{bg:DS.goldFaint,txt:DS.gold,lbl:"IA"},abogado:{bg:DS.blueL,txt:DS.blue,lbl:"ABG"}};const c=cfgMap[item.tipo]||cfgMap.sistema;return(<div style={{display:"flex",gap:10,marginBottom:14}}><div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}><div style={{width:28,height:28,borderRadius:"50%",background:c.bg,border:`1px solid ${c.txt}30`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:800,color:c.txt}}>{c.lbl}</span></div><div style={{width:1,flex:1,background:DS.creamD,marginTop:4}}/></div><div style={{paddingBottom:4}}><div style={{display:"flex",gap:8,alignItems:"baseline",marginBottom:3}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:c.txt}}>{item.actor}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{fmtShort(item.ts)}</span></div><p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slate,margin:0,lineHeight:1.55}}>{item.msg}</p></div></div>);}
+function DocRow({doc}){const colors={ia:DS.purple,abogado:DS.blue,sistema:DS.slate};const c=colors[doc.tipo]||DS.slate;return(<div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:DS.creamM,borderRadius:7,marginBottom:6}}><i className="ti ti-file-description" style={{fontSize:18,color:c}} aria-hidden/><div style={{flex:1}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.ink}}>{doc.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{doc.tipo.toUpperCase()} · {doc.size}</div></div><button style={{border:"none",background:"transparent",cursor:"pointer",padding:"5px 8px",borderRadius:5,display:"flex",alignItems:"center",gap:4,color:DS.slateL,fontFamily:"'Outfit',sans-serif",fontSize:11}} onMouseEnter={e=>{e.currentTarget.style.background=DS.creamDD;e.currentTarget.style.color=DS.ink;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=DS.slateL;}}><i className="ti ti-download" style={{fontSize:14}} aria-hidden/> Descargar</button></div>);}
+function AcBtn({icon,label,sub,color,onClick}){const [h,setH]=useState(false);return(<button onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4,padding:"11px 13px",background:h?color:"transparent",border:`1px solid ${h?color:DS.creamDD}`,borderRadius:9,cursor:"pointer",transition:"all .15s",textAlign:"left"}}><div style={{display:"flex",alignItems:"center",gap:7}}><i className={`ti ${icon}`} style={{fontSize:15,color:h?"#fff":color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:h?"#fff":color}}>{label}</span></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:h?"rgba(255,255,255,.7)":DS.slateL}}>{sub}</span></button>);}
+function CasoRow({caso,selected,onClick}){const est=ESTADO_CFG[caso.estado];const urgent=caso.estado==="ESCALADO"||caso.estado==="HITL";const ac=AREA_COLOR[caso.area]||DS.slate;return(<div onClick={onClick} style={{padding:"13px 16px",borderBottom:`1px solid ${DS.creamD}`,cursor:"pointer",background:selected?DS.goldFaint:urgent?"rgba(148,96,16,0.04)":DS.white,borderLeft:`3px solid ${selected?DS.gold:urgent?DS.amber:"transparent"}`,transition:"background .12s"}} onMouseEnter={e=>{if(!selected)e.currentTarget.style.background=DS.creamM;}} onMouseLeave={e=>{if(!selected)e.currentTarget.style.background=urgent?"rgba(148,96,16,0.04)":DS.white;}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:22,height:22,borderRadius:5,background:ac,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:800,color:"#fff"}}>{AREA_ICON[caso.area]||"?"}</span></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.gold}}>#{caso.folio}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{caso.area}</span></div><Chip label={est.label} dot={est.dot} bg={est.bg} txt={est.txt} size={9}/></div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink,marginBottom:3,lineHeight:1.2}}>{caso.cliente}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slate,marginBottom:8,lineHeight:1.4}}>{caso.asunto.length>60?caso.asunto.slice(0,60)+"…":caso.asunto}</div><div style={{display:"flex",flexDirection:"column",gap:4}}><ConfBar val={caso.confianza} compact/><SlaBar sla={caso.sla} horas={caso.horasTranscurridas} compact/></div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}><div style={{display:"flex",alignItems:"center",gap:5}}><i className={`ti ${CANAL_ICON[caso.canal]||"ti-device-mobile"}`} style={{fontSize:12,color:DS.slateL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{caso.canal}</span></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateXL}}>{horasLabel(caso.horasTranscurridas)}</span></div>{caso.plazoCritico&&<div style={{marginTop:6,display:"flex",alignItems:"center",gap:5,background:DS.redL,padding:"4px 8px",borderRadius:4}}><i className="ti ti-alert-triangle" style={{fontSize:11,color:DS.red}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.red,fontWeight:700}}>Plazo: {new Date(caso.plazoCritico).toLocaleDateString("es-CL")}</span></div>}</div>);}
+function CasoDetail({caso,onAccion,onEditar,onEliminar}){const [tab,setTab]=useState("acciones");const [nota,setNota]=useState("");const [leccion,setLeccion]=useState(caso.leccion||"");const [clmTipo,setClmTipo]=useState("Contrato de servicios");const est=ESTADO_CFG[caso.estado];const cerrado=caso.estado==="CERRADO";const ac=AREA_COLOR[caso.area]||DS.slate;const TABS=[{id:"resumen",label:"Resumen",icon:"ti-clipboard-text"},{id:"acciones",label:"Acciones",icon:"ti-bolt"},{id:"historial",label:"Historial",icon:"ti-timeline"},{id:"docs",label:"Documentos",icon:"ti-folder",count:caso.docs.length},{id:"clm",label:"Generar doc",icon:"ti-file-plus",hidden:cerrado},{id:"cerrar",label:"Cierre",icon:"ti-circle-check",hidden:cerrado}].filter(t=>!t.hidden);return(<div style={{display:"flex",flexDirection:"column",height:"100%",background:DS.white}}><div style={{padding:"18px 24px 0",borderBottom:`1px solid ${DS.creamD}`,background:DS.cream,flexShrink:0}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div style={{flex:1,minWidth:0}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}><div style={{background:DS.ink,borderRadius:6,padding:"4px 12px",display:"inline-flex",alignItems:"center",border:`1px solid ${DS.goldLine}`}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:800,color:DS.gold,letterSpacing:"0.06em"}}>{caso.id}</span></div><Chip label={est.label} dot={est.dot} bg={est.bg} txt={est.txt}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:caso.prioridad==="CRITICA"?DS.red:caso.prioridad==="ALTA"?DS.amber:DS.blue}}>● {caso.prioridad}</span></div><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:26,height:26,borderRadius:5,background:ac,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:800,color:"#fff"}}>{AREA_ICON[caso.area]}</span></div><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:700,color:DS.ink}}>{caso.cliente}</span></div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL,marginTop:2}}>RUT {caso.rut} · Kit {caso.kit} · Agente {caso.agente}</div></div><div style={{display:"flex",gap:6,alignItems:"flex-start",flexShrink:0,marginLeft:12}}>{!cerrado&&(<select value={caso.estado} onChange={e=>onAccion(caso.id,"cambiarEstado",e.target.value)} style={{padding:"6px 10px",borderRadius:6,border:`1px solid ${DS.creamDD}`,background:DS.white,fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.ink,cursor:"pointer",outline:"none"}}><option value="HITL">HITL Pendiente</option><option value="EN_REVISION">En Revisión</option><option value="ESCALADO">Escalado</option><option value="CERRADO">Cerrado</option></select>)}<button onClick={()=>onEditar(caso)} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",borderRadius:6,border:`1px solid ${DS.creamDD}`,background:DS.white,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slate}} onMouseEnter={e=>{e.currentTarget.style.borderColor=DS.gold;e.currentTarget.style.color=DS.gold;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=DS.creamDD;e.currentTarget.style.color=DS.slate;}}><i className="ti ti-pencil" style={{fontSize:12}} aria-hidden/>Editar</button><button onClick={()=>onEliminar(caso)} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",borderRadius:6,border:`1px solid ${DS.redL}`,background:DS.redL,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.red}} onMouseEnter={e=>{e.currentTarget.style.background=DS.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background=DS.redL;e.currentTarget.style.color=DS.red;}}><i className="ti ti-trash" style={{fontSize:12}} aria-hidden/>Eliminar</button></div></div><p style={{fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic",fontSize:14,color:DS.inkM,margin:"0 0 10px",lineHeight:1.4}}>"{caso.asunto}"</p><SopBar etapa={caso.etapa}/><div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:10}}><ConfBar val={caso.confianza}/><SlaBar sla={caso.sla} horas={caso.horasTranscurridas}/></div>{caso.plazoCritico&&(<div style={{display:"flex",alignItems:"center",gap:8,background:caso.plazoCriticoGestionado?DS.greenL:DS.redL,border:`1px solid ${caso.plazoCriticoGestionado?DS.green:DS.red}25`,borderRadius:7,padding:"8px 12px",marginBottom:10}}><i className={`ti ${caso.plazoCriticoGestionado?"ti-circle-check":"ti-alarm"}`} style={{fontSize:15,color:caso.plazoCriticoGestionado?DS.green:DS.red}} aria-hidden/><div style={{flex:1}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:caso.plazoCriticoGestionado?DS.green:DS.red}}>Plazo crítico: </span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:caso.plazoCriticoGestionado?DS.green:DS.red}}>{new Date(caso.plazoCritico).toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long"})}</span></div>{!caso.plazoCriticoGestionado&&(<button onClick={()=>onAccion(caso.id,"gestionarPlazo",null)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${DS.red}`,background:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.red,whiteSpace:"nowrap"}} onMouseEnter={e=>{e.currentTarget.style.background=DS.red;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=DS.red;}}>Marcar gestionado</button>)}</div>)}{caso.fuentesRAG.length>0&&(<div style={{display:"flex",alignItems:"flex-start",gap:7,marginBottom:10}}><i className="ti ti-database" style={{fontSize:12,color:DS.gold,marginTop:2}} aria-hidden/><div style={{flex:1}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.gold,textTransform:"uppercase",letterSpacing:"0.1em"}}>Fuentes RAG ({caso.fuentesRAG.length}): </span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slate}}>{caso.fuentesRAG.join(" · ")}</span></div></div>)}<div style={{display:"flex",gap:0,marginBottom:-1,overflowX:"auto"}}>{TABS.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.id?DS.gold:"transparent"}`,cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap"}}><i className={`ti ${t.icon}`} style={{fontSize:12,color:tab===t.id?DS.gold:DS.slateL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:tab===t.id?700:400,color:tab===t.id?DS.gold:DS.slateL}}>{t.label}</span>{t.count!=null&&<span style={{background:DS.creamD,borderRadius:8,fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.slate,padding:"1px 5px"}}>{t.count}</span>}</button>))}</div></div><div style={{flex:1,overflowY:"auto",padding:"16px 24px"}}>{tab==="resumen"&&(<><SecLabel icon="ti-user">Datos del cliente</SecLabel><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>{[{icon:"ti-user",label:"Nombre",val:caso.contacto.nombre},{icon:"ti-id",label:"RUT",val:caso.rut},{icon:"ti-mail",label:"Email",val:caso.contacto.email},{icon:"ti-phone",label:"Teléfono",val:caso.contacto.tel}].map(({icon,label,val})=>(<div key={label} style={{background:DS.creamM,borderRadius:7,padding:"9px 12px",display:"flex",gap:8,alignItems:"flex-start"}}><i className={`ti ${icon}`} style={{fontSize:14,color:DS.slateL,marginTop:1,flexShrink:0}} aria-hidden/><div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:1}}>{label}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,fontWeight:500}}>{val}</div></div></div>))}</div><SecLabel icon="ti-cpu">Análisis del agente IA</SecLabel><div style={{background:`${DS.gold}09`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"13px 16px",marginBottom:16}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.inkM,margin:0,lineHeight:1.65}}>{caso.resumenIA}</p></div>{caso.leccion&&(<><SecLabel icon="ti-brain">Lección aprendida</SecLabel><div style={{background:DS.greenL,border:`1px solid ${DS.green}30`,borderRadius:8,padding:"12px 14px"}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.green,margin:0,lineHeight:1.6}}>{caso.leccion}</p></div></>)}</>)}{tab==="acciones"&&(<>{caso.acciones.length>0&&(<><SecLabel icon="ti-checklist">Próximas acciones</SecLabel><div style={{marginBottom:16}}>{caso.acciones.map((a,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:DS.creamM,borderRadius:7,marginBottom:5}}><div style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${DS.slateXL}`,flexShrink:0}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink}}>{a}</span></div>))}</div></>)}{!cerrado&&(<><SecLabel icon="ti-bolt">Acción rápida</SecLabel><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>{[{id:"aprobar",icon:"ti-check",label:"Aprobar y enviar",sub:"Confirma al cliente",color:DS.green},{id:"responder",icon:"ti-send",label:"Responder cliente",sub:"Envía nota al cliente",color:DS.blue},{id:"escalar",icon:"ti-alarm",label:"Escalar a equipo",sub:"Notifica Slack",color:DS.amber},{id:"cerrar",icon:"ti-circle-check",label:"Cerrar caso",sub:"Archiva + envía RAG",color:DS.slate}].map(a=>(<AcBtn key={a.id} {...a} onClick={()=>onAccion(caso.id,a.id,{nota,leccion})}/>))}</div><SecLabel icon="ti-pencil">Nota interna</SecLabel><textarea value={nota} onChange={e=>setNota(e.target.value)} placeholder="Análisis, instrucciones o notas internas…" style={{width:"100%",minHeight:80,background:DS.cream,border:`1px solid ${DS.creamDD}`,borderRadius:8,boxSizing:"border-box",padding:"10px 13px",fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></>)}</>)}{tab==="historial"&&(<><SecLabel icon="ti-timeline">Línea de tiempo</SecLabel>{caso.historial.map((h,i)=><HistItem key={i} item={h}/>)}</>)}{tab==="docs"&&(<><SecLabel icon="ti-folder">Documentos del caso</SecLabel>{caso.docs.length===0?<p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL}}>Sin documentos.</p>:caso.docs.map((d,i)=><DocRow key={i} doc={d}/>)}{!cerrado&&<button style={{display:"flex",alignItems:"center",gap:7,padding:"9px 14px",background:"transparent",border:`1px dashed ${DS.slateXL}`,borderRadius:7,cursor:"pointer",marginTop:8,fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slate}} onMouseEnter={e=>{e.currentTarget.style.borderColor=DS.gold;e.currentTarget.style.color=DS.gold;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=DS.slateXL;e.currentTarget.style.color=DS.slate;}}><i className="ti ti-upload" style={{fontSize:15}} aria-hidden/>Subir documento</button>}</>)}{tab==="clm"&&!cerrado&&(<><SecLabel icon="ti-file-plus">Generador CLM</SecLabel><div style={{background:DS.creamM,borderRadius:8,padding:"16px"}}><select value={clmTipo} onChange={e=>setClmTipo(e.target.value)} style={{width:"100%",padding:"8px 12px",borderRadius:7,border:`1px solid ${DS.creamDD}`,background:DS.white,fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none",cursor:"pointer",marginBottom:12}}>{["Contrato de servicios","NDA","Mandato INAPI","Propuesta kit","Carta SII","Contrato de trabajo","Finiquito","T&C e-commerce"].map(o=>(<option key={o}>{o}</option>))}</select><button onClick={()=>onAccion(caso.id,"clm",clmTipo)} style={{width:"100%",padding:"10px",background:DS.ink,border:`1px solid ${DS.goldLine}`,borderRadius:7,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.gold,display:"flex",alignItems:"center",justifyContent:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=DS.inkM} onMouseLeave={e=>e.currentTarget.style.background=DS.ink}><i className="ti ti-wand" style={{fontSize:16}} aria-hidden/>Generar con IA → n8n</button></div></>)}{tab==="cerrar"&&!cerrado&&(<><SecLabel icon="ti-brain">Lección aprendida → RAG</SecLabel><div style={{background:`${DS.gold}08`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"12px 14px",marginBottom:12}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL,margin:"0 0 8px",lineHeight:1.5}}>Esta lección se enviará al RAG para mejorar futuros análisis.</p><textarea value={leccion} onChange={e=>setLeccion(e.target.value)} placeholder="Ej: 'Art. 192 CT aplica incluso en segunda omisión…'" style={{width:"100%",minHeight:80,background:DS.white,border:`1px solid ${DS.goldLine}`,borderRadius:7,boxSizing:"border-box",padding:"9px 12px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.goldLine}/></div><SecLabel icon="ti-bolt">Acción final</SecLabel><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{[{id:"aprobar",icon:"ti-check",label:"Aprobar y enviar",sub:"Confirma al cliente",color:DS.green},{id:"responder",icon:"ti-send",label:"Responder cliente",sub:"Envía nota al cliente",color:DS.blue},{id:"escalar",icon:"ti-alarm",label:"Escalar a equipo",sub:"Notifica Slack",color:DS.amber},{id:"cerrar",icon:"ti-circle-check",label:"Cerrar caso",sub:"Archiva + envía RAG",color:DS.slate}].map(a=>(<AcBtn key={a.id} {...a} onClick={()=>onAccion(caso.id,a.id,{nota,leccion})}/>))}</div></>)}</div></div>);}
+function PantallaCasos({showToast}){const [selId,setSelId]=useState(CASOS_INIT[0].id);const [search,setSearch]=useState("");const [filtroEstado,setFiltroEstado]=useState("TODOS");const [casos,setCasos]=useState(CASOS_INIT);const [modalEditar,setModalEditar]=useState(null);const [modalEliminar,setModalEliminar]=useState(null);const selCaso=casos.find(c=>c.id===selId);const filtered=casos.filter(c=>{const okE=filtroEstado==="TODOS"||c.estado===filtroEstado;const q=search.toLowerCase();const okS=!q||c.cliente.toLowerCase().includes(q)||c.id.toLowerCase().includes(q)||c.rut.includes(q)||c.asunto.toLowerCase().includes(q)||c.resumenIA.toLowerCase().includes(q);return okE&&okS;});function handleAccion(casoId,tipo,data){if(tipo==="cambiarEstado"){setCasos(p=>p.map(c=>c.id===casoId?{...c,estado:data}:c));showToast(`Estado → ${ESTADO_CFG[data]?.label||data}`,"ok");return;}if(tipo==="gestionarPlazo"){setCasos(p=>p.map(c=>c.id===casoId?{...c,plazoCriticoGestionado:true}:c));showToast("Plazo marcado como gestionado","ok");return;}const mapa={aprobar:"EN_REVISION",escalar:"ESCALADO",cerrar:"CERRADO"};const msgs={aprobar:"Documento aprobado y enviado al cliente",responder:"Respuesta enviada",escalar:"Caso escalado — Slack notificado",cerrar:"Caso cerrado. Lección enviada al RAG",clm:`Documento "${data}" generado por n8n`};if(mapa[tipo])setCasos(p=>p.map(c=>c.id===casoId?{...c,estado:mapa[tipo]}:c));showToast(msgs[tipo]||"Acción ejecutada",tipo==="escalar"?"warn":"ok");}function handleSaveEditar(form){setCasos(p=>p.map(c=>c.id===modalEditar.id?{...c,cliente:form.cliente,rut:form.rut,asunto:form.asunto,contacto:{nombre:form.nombre,email:form.email,tel:form.tel}}:c));setModalEditar(null);showToast("Datos actualizados","ok");}function handleEliminar(){const id=modalEliminar.id;setCasos(p=>p.filter(c=>c.id!==id));const next=casos.find(c=>c.id!==id);if(next)setSelId(next.id);setModalEliminar(null);showToast("Caso eliminado","warn");}return(<>{modalEditar&&<ModalEditar caso={modalEditar} onSave={handleSaveEditar} onClose={()=>setModalEditar(null)}/>}{modalEliminar&&<ModalEliminar caso={modalEliminar} onConfirm={handleEliminar} onClose={()=>setModalEliminar(null)}/>}<div style={{display:"flex",flex:1,overflow:"hidden"}}><div style={{width:300,background:DS.white,borderRight:`1px solid ${DS.creamD}`,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{padding:"14px 16px 10px",background:DS.cream,borderBottom:`1px solid ${DS.creamD}`,flexShrink:0}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Casos activos</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{filtered.length} casos</span></div><div style={{position:"relative",marginBottom:10}}><i className="ti ti-search" style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,color:DS.slateL}} aria-hidden/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cliente, RUT, asunto, análisis IA…" style={{width:"100%",paddingLeft:30,height:32,background:DS.white,border:`1px solid ${DS.creamDD}`,borderRadius:7,boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{["TODOS","HITL","ESCALADO","EN_REVISION","CERRADO"].map(e=>{const cfg=ESTADO_CFG[e];const a=filtroEstado===e;return(<button key={e} onClick={()=>setFiltroEstado(e)} style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:600,padding:"3px 8px",borderRadius:4,cursor:"pointer",border:`1px solid ${a?(cfg?.dot||DS.gold):DS.creamDD}`,background:a?(cfg?cfg.bg:DS.goldFaint):"transparent",color:a?(cfg?.txt||DS.gold):DS.slateL}}>{e==="TODOS"?"Todos":cfg?.label||e}</button>);})}</div></div><div style={{flex:1,overflowY:"auto"}}>{filtered.length===0&&<div style={{padding:"40px 20px",textAlign:"center"}}><i className="ti ti-search-off" style={{fontSize:32,color:DS.slateXL,display:"block",marginBottom:8}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL}}>Sin resultados</span></div>}{filtered.map(c=>(<CasoRow key={c.id} caso={c} selected={selId===c.id} onClick={()=>setSelId(c.id)}/>))}</div></div><div style={{flex:1,overflow:"hidden"}}>{selCaso?<CasoDetail caso={selCaso} onAccion={handleAccion} onEditar={c=>setModalEditar(c)} onEliminar={c=>setModalEliminar(c)}/>:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:12}}><i className="ti ti-clipboard-text" style={{fontSize:40,color:DS.slateXL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:DS.slateL}}>Selecciona un caso</span></div>}</div></div></>);}
+function PantallaPlazos(){const [plazos,setPlazos]=useState(PLAZOS_INIT);const grupos=[{label:"Críticos (≤7 días)",items:plazos.filter(p=>p.diasRestantes<=7&&!p.gestionado)},{label:"Próximos (8–15 días)",items:plazos.filter(p=>p.diasRestantes>7&&p.diasRestantes<=15&&!p.gestionado)},{label:"En el horizonte",items:plazos.filter(p=>p.diasRestantes>15&&!p.gestionado)},{label:"Gestionados",items:plazos.filter(p=>p.gestionado)}];return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}><h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>Agenda Legal Crítica</h1><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:"0 0 24px"}}>Vencimientos activos — marcas INAPI, SII, DT y contratos</p>{grupos.map(({label,items})=>(items.length>0&&(<div key={label} style={{marginBottom:28}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.1em"}}>{label}</span><div style={{flex:1,height:1,background:DS.creamD}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{items.length}</span></div><div style={{display:"flex",flexDirection:"column",gap:8}}>{items.map(p=>{const uc=URGENCIA_CFG[p.urgencia];const diasLabel=p.gestionado?"✓":p.diasRestantes===0?"HOY":p.diasRestantes===1?"Mañana":`${p.diasRestantes}d`;return(<Card key={p.id} style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:14,opacity:p.gestionado?0.65:1}}><div style={{width:56,height:56,borderRadius:10,background:p.gestionado?DS.greenL:uc.bg,border:`1px solid ${p.gestionado?DS.green:uc.color}30`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:700,color:p.gestionado?DS.green:uc.color,lineHeight:1}}>{diasLabel}</span>{!p.gestionado&&p.diasRestantes>1&&<span style={{fontFamily:"'Outfit',sans-serif",fontSize:8,color:uc.color,fontWeight:600}}>días</span>}</div><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:uc.color,background:uc.bg,padding:"2px 8px",borderRadius:4}}>{p.tipo}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{p.ref}</span></div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink,marginBottom:2}}>{p.cliente}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slate}}>{p.asunto}</div></div><div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}><div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>Vence</div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:15,fontWeight:700,color:DS.ink}}>{new Date(p.fecha).toLocaleDateString("es-CL",{day:"2-digit",month:"short"})}</div></div>{!p.gestionado&&(<button onClick={()=>setPlazos(prev=>prev.map(x=>x.id===p.id?{...x,gestionado:true}:x))} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${DS.green}`,background:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.green,whiteSpace:"nowrap"}} onMouseEnter={e=>{e.currentTarget.style.background=DS.green;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=DS.green;}}>Marcar gestionado</button>)}</div></Card>);})}</div></div>)))}</div>);}
+function PantallaClientes(){const [sel,setSel]=useState(null);const cliente=CLIENTES[sel];return(<div style={{display:"flex",flex:1,overflow:"hidden"}}><div style={{width:280,background:DS.white,borderRight:`1px solid ${DS.creamD}`,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{padding:"16px",background:DS.cream,borderBottom:`1px solid ${DS.creamD}`}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Clientes</span></div><div style={{flex:1,overflowY:"auto"}}>{CLIENTES.map((c,i)=>(<div key={c.rut} onClick={()=>setSel(i)} style={{padding:"13px 16px",borderBottom:`1px solid ${DS.creamD}`,cursor:"pointer",background:sel===i?DS.goldFaint:DS.white,borderLeft:`3px solid ${sel===i?DS.gold:"transparent"}`,transition:"all .12s"}} onMouseEnter={e=>{if(sel!==i)e.currentTarget.style.background=DS.creamM;}} onMouseLeave={e=>{if(sel!==i)e.currentTarget.style.background=DS.white;}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:3}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink}}>{c.nombre}</span>{c.suscripcion&&<Chip label="Suscripción" bg={DS.greenL} txt={DS.greenT} size={9}/>}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{c.tipo} · {c.kit} · {c.casos.length} caso{c.casos.length!==1?"s":""}</div></div>))}</div></div><div style={{flex:1,overflowY:"auto",background:DS.creamM,padding:"28px 32px"}}>{!cliente?(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:12}}><i className="ti ti-building-store" style={{fontSize:40,color:DS.slateXL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:DS.slateL}}>Selecciona un cliente</span></div>):(<><div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}><div style={{width:44,height:44,borderRadius:10,background:DS.ink,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${DS.goldLine}`}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:700,color:DS.gold}}>{cliente.nombre[0]}</span></div><div><h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:700,color:DS.ink,margin:0}}>{cliente.nombre}</h2><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>RUT {cliente.rut} · {cliente.tipo}</div></div>{cliente.suscripcion&&<Chip label="Abono mensual activo" bg={DS.greenL} txt={DS.greenT}/>}</div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>{[{label:"Kit activo",val:cliente.kit,icon:"ti-package"},{label:"Casos total",val:cliente.casos.length,icon:"ti-folder"},{label:"NPS",val:cliente.nps??"-",icon:"ti-star"}].map(({label,val,icon})=>(<Card key={label} style={{padding:"14px 16px"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><i className={`ti ${icon}`} style={{fontSize:16,color:DS.gold}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</span></div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:700,color:DS.ink}}>{val}</div></Card>))}</div><SecLabel icon="ti-list">Asuntos</SecLabel>{cliente.casos.map(idx=>{const c=CASOS_INIT[idx];if(!c)return null;const est=ESTADO_CFG[c.estado];return(<Card key={c.id} style={{padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}><div style={{width:28,height:28,borderRadius:6,background:AREA_COLOR[c.area]||DS.slate,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:800,color:"#fff"}}>{AREA_ICON[c.area]||"?"}</span></div><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.gold}}>#{c.folio}</span><Chip label={est.label} dot={est.dot} bg={est.bg} txt={est.txt} size={9}/></div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink}}>{c.asunto}</div></div></Card>);})}</>)}</div></div>);}
+function PantallaMetricas(){const kpis=[{label:"Throughput semana",val:`${KPIS.throughputSemana} casos`,icon:"ti-trending-up",color:DS.green},{label:"SLA cumplido",val:`${KPIS.slaRate}%`,icon:"ti-clock",color:DS.blue},{label:"Tiempo promedio",val:KPIS.avgResolucion,icon:"ti-hourglass",color:DS.gold},{label:"NPS promedio",val:KPIS.npsPromedio,icon:"ti-star",color:DS.green},{label:"Casos totales",val:KPIS.casosTotal,icon:"ti-folder",color:DS.inkM},{label:"Chunks RAG",val:KPIS.ragChunks.toLocaleString("es-CL"),icon:"ti-database",color:DS.purple}];const porArea=["Marcas","Societario","Laboral","Tributario","Contratos"].map((a,i)=>({area:a,count:[6,4,2,5,3][i],color:AREA_COLOR[a]}));const max=Math.max(...porArea.map(p=>p.count));return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}><h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 20px"}}>Métricas del sistema</h1><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:24}}>{kpis.map(({label,val,icon,color})=>(<Card key={label} style={{padding:"18px 20px"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><i className={`ti ${icon}`} style={{fontSize:18,color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</span></div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:32,fontWeight:700,color:DS.ink}}>{val}</div></Card>))}</div><Card style={{padding:"20px 24px",marginBottom:16}}><SecLabel icon="ti-chart-bar">Casos por área (semana)</SecLabel>{porArea.map(({area,count,color})=>(<div key={area} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,width:90}}>{area}</span><div style={{flex:1,height:20,background:DS.creamM,borderRadius:4,overflow:"hidden"}}><div style={{width:`${(count/max)*100}%`,height:"100%",background:color,borderRadius:4,transition:"width .6s"}}/></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:DS.ink,minWidth:16}}>{count}</span></div>))}</Card><Card style={{padding:"20px 24px"}}><SecLabel icon="ti-database">Estado del RAG</SecLabel><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginTop:8}}>{[{label:"Fuentes indexadas",val:KPIS.ragFuentes,icon:"ti-file-text"},{label:"Chunks totales",val:KPIS.ragChunks.toLocaleString("es-CL"),icon:"ti-layers"},{label:"Templates RAG",val:KPIS.ragTemplates,icon:"ti-template"}].map(({label,val,icon})=>(<div key={label} style={{background:DS.creamM,borderRadius:8,padding:"12px 14px"}}><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:6}}><i className={`ti ${icon}`} style={{fontSize:14,color:DS.gold}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</span></div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:700,color:DS.ink}}>{val}</div></div>))}</div></Card></div>);}
+function PantallaSystem(){const estadoCfg={ok:{color:DS.green,label:"Operativo",icon:"ti-circle-check"},warn:{color:DS.amber,label:"Atención",icon:"ti-alert-triangle"},err:{color:DS.red,label:"Intervención",icon:"ti-alert-circle"}};return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}><h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>Sistema multiagente</h1><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:"0 0 20px"}}>Estado en tiempo real de los agentes A0–A7</p><Card style={{padding:"16px 20px",marginBottom:20,background:DS.ink,border:`1px solid ${DS.goldLine}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><div style={{width:44,height:44,borderRadius:10,background:DS.goldFaint,border:`1px solid ${DS.goldLine}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-brain" style={{fontSize:22,color:DS.gold}} aria-hidden/></div><div style={{flex:1}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.gold}}>Cerebro AG — Orquestador principal</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>Coordina A0–A7 · JSON message protocol · Supabase agent registry</div></div><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:DS.green,boxShadow:`0 0 8px ${DS.green}`}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.green}}>Operativo</span></div></div></Card><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>{AGENTES.map(ag=>{const s=estadoCfg[ag.estado];const escPct=ag.casos_hoy>0?Math.round((ag.escalados/ag.casos_hoy)*100):0;return(<Card key={ag.id} style={{padding:"16px 18px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:36,height:36,borderRadius:8,background:ag.color,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:800,color:"#fff"}}>{ag.id}</span></div><div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink}}>{ag.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{ag.canal}</div></div></div><div style={{display:"flex",alignItems:"center",gap:5}}><i className={`ti ${s.icon}`} style={{fontSize:14,color:s.color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:s.color}}>{s.label}</span></div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>{[{label:"Casos hoy",val:ag.casos_hoy},{label:"Escalados",val:ag.escalados},{label:"Escalación",val:`${escPct}%`}].map(({label,val})=>(<div key={label} style={{background:DS.creamM,borderRadius:6,padding:"6px 8px"}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:8,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:2}}>{label}</div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>{val}</div></div>))}</div><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.slateL,width:56}}>Conf. media</span><Bar pct={Math.round(ag.conf_prom*100)} color={ag.conf_prom>=0.7?DS.green:ag.conf_prom>=0.55?DS.amber:DS.red}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:ag.conf_prom>=0.7?DS.green:ag.conf_prom>=0.55?DS.amber:DS.red,minWidth:28}}>{Math.round(ag.conf_prom*100)}%</span></div>{ag.estado!=="ok"&&(<div style={{marginTop:8,display:"flex",alignItems:"center",gap:6,background:ag.estado==="err"?DS.redL:DS.amberL,borderRadius:5,padding:"5px 9px"}}><i className="ti ti-alert-triangle" style={{fontSize:12,color:ag.estado==="err"?DS.red:DS.amber}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:ag.estado==="err"?DS.red:DS.amber}}>{ag.estado==="err"?"Requiere intervención del abogado":"Tasa de escalación elevada"}</span></div>)}</Card>);})}</div></div>);}
+function PantallaRAG(){const [filtroArea,setFiltroArea]=useState("TODAS");const [busqueda,setBusqueda]=useState("");const areas=["TODAS",...[...new Set(RAG_FUENTES.map(f=>f.area))]];const totalChunks=RAG_FUENTES.reduce((s,f)=>s+f.chunks,0);const porArea=[...new Set(RAG_FUENTES.map(f=>f.area))].map(a=>({area:a,chunks:RAG_FUENTES.filter(f=>f.area===a).reduce((s,f)=>s+f.chunks,0),fuentes:RAG_FUENTES.filter(f=>f.area===a).length,color:AREA_COLOR[a]||DS.slate}));const filtered=RAG_FUENTES.filter(f=>{const okA=filtroArea==="TODAS"||f.area===filtroArea;const q=busqueda.toLowerCase();const okB=!q||f.nombre.toLowerCase().includes(q)||f.area.toLowerCase().includes(q);return okA&&okB;});return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}><div style={{marginBottom:20}}><h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>RAG y Fuentes</h1><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:0}}>Base de conocimiento legal vectorial — {RAG_FUENTES.length} fuentes · {totalChunks.toLocaleString("es-CL")} chunks</p></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>{[{label:"Fuentes indexadas",val:RAG_FUENTES.length,icon:"ti-file-text",color:DS.blue},{label:"Chunks totales",val:totalChunks.toLocaleString("es-CL"),icon:"ti-layers",color:DS.purple},{label:"Templates",val:KPIS.ragTemplates,icon:"ti-template",color:DS.gold},{label:"Alertas",val:RAG_FUENTES.filter(f=>f.estado==="warn").length,icon:"ti-alert-triangle",color:DS.amber}].map(({label,val,icon,color})=>(<Card key={label} style={{padding:"16px 18px"}}><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:6}}><i className={`ti ${icon}`} style={{fontSize:16,color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</span></div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink}}>{val}</div></Card>))}</div><Card style={{padding:"20px 24px",marginBottom:20}}><SecLabel icon="ti-chart-bar">Distribución de chunks por área</SecLabel>{porArea.sort((a,b)=>b.chunks-a.chunks).map(({area,chunks,fuentes,color})=>(<div key={area} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,width:100}}>{area}</span><div style={{flex:1,height:22,background:DS.creamM,borderRadius:4,overflow:"hidden"}}><div style={{width:`${(chunks/totalChunks)*100}%`,height:"100%",background:color,borderRadius:4,transition:"width .6s"}}/></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.ink,minWidth:60,textAlign:"right"}}>{chunks.toLocaleString("es-CL")}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL,minWidth:70}}>{fuentes} fuente{fuentes!==1?"s":""}</span></div>))}</Card><div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}><div style={{position:"relative",flex:1,maxWidth:320}}><i className="ti ti-search" style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,color:DS.slateL}} aria-hidden/><input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar fuente…" style={{width:"100%",paddingLeft:30,height:34,background:DS.white,border:`1px solid ${DS.creamDD}`,borderRadius:7,boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>{areas.map(a=>(<button key={a} onClick={()=>setFiltroArea(a)} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${filtroArea===a?DS.gold:DS.creamDD}`,background:filtroArea===a?DS.goldFaint:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:filtroArea===a?700:400,color:filtroArea===a?DS.gold:DS.slate}}>{a}</button>))}</div><Card style={{overflow:"hidden"}}><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr style={{background:DS.creamM}}>{["ID","Nombre","Área","Chunks","Tamaño","Actualización","Estado"].map(h=>(<th key={h} style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",textAlign:"left",borderBottom:`1px solid ${DS.creamD}`,whiteSpace:"nowrap"}}>{h}</th>))}</tr></thead><tbody>{filtered.map((f,i)=>(<tr key={f.id} style={{borderBottom:`1px solid ${DS.creamD}`,background:i%2===0?DS.white:DS.cream}}><td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{f.id}</td><td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.ink,maxWidth:240}}><div style={{display:"flex",alignItems:"center",gap:7}}><i className="ti ti-file-text" style={{fontSize:14,color:AREA_COLOR[f.area]||DS.slate,flexShrink:0}} aria-hidden/>{f.nombre}</div></td><td style={{padding:"10px 14px"}}><span style={{background:(AREA_COLOR[f.area]||DS.slate)+"20",color:AREA_COLOR[f.area]||DS.slate,padding:"2px 8px",borderRadius:4,fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700}}>{f.area}</span></td><td style={{padding:"10px 14px",fontFamily:"'Cormorant Garamond',serif",fontSize:16,fontWeight:700,color:DS.ink}}>{f.chunks.toLocaleString("es-CL")}</td><td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{f.size}</td><td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{new Date(f.fecha).toLocaleDateString("es-CL")}</td><td style={{padding:"10px 14px"}}>{f.estado==="ok"?<span style={{display:"inline-flex",alignItems:"center",gap:4,background:DS.greenL,color:DS.green,padding:"2px 8px",borderRadius:4,fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700}}><i className="ti ti-circle-check" style={{fontSize:12}} aria-hidden/>OK</span>:<span style={{display:"inline-flex",alignItems:"center",gap:4,background:DS.amberL,color:DS.amber,padding:"2px 8px",borderRadius:4,fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700}}><i className="ti ti-alert-triangle" style={{fontSize:12}} aria-hidden/>Revisar</span>}</td></tr>))}</tbody></table></div></Card></div>);}
+function PantallaConfig({showToast}){const [umbralHITL,setUmbralHITL]=useState(65);const [slaDefault,setSlaDefault]=useState(48);const [notifSlack,setNotifSlack]=useState(true);const [notifEmail,setNotifEmail]=useState(true);const [usuarios,setUsuarios]=useState([{id:1,nombre:"Kurt Leupin",email:"kurt@pymeenregla.cl",rol:"Admin",activo:true},{id:2,nombre:"Abogado PER",email:"abogado@pymeenregla.cl",rol:"Abogado",activo:true}]);const [nuevoNombre,setNuevoNombre]=useState("");const [nuevoEmail,setNuevoEmail]=useState("");const conexiones=[{nombre:"Supabase (PostgreSQL + pgvector)",estado:"ok",url:"kwyicmnbquqpuoxmsxgt.supabase.co",detalle:"São Paulo · 5.768 chunks"},{nombre:"n8n (Orquestador workflows)",estado:"ok",url:"n8n.srv1108143.hstgr.cloud",detalle:"Hostinger VPS 8GB · A0–A7 activos"},{nombre:"Slack (Notificaciones HITL)",estado:"ok",url:"pyme-en-regla.slack.com",detalle:"7 canales · #per-general activo"},{nombre:"Gmail (Confirmaciones cliente)",estado:"ok",url:"OAuth2 per-n8n-496803",detalle:"Envíos automáticos activos"},{nombre:"OpenAI (Embeddings)",estado:"ok",url:"text-embedding-3-small",detalle:"Vectorización de documentos"},{nombre:"Claude (Agentes IA)",estado:"ok",url:"claude-sonnet + haiku",detalle:"A0 Haiku · A1–A7 Sonnet"}];const inp={padding:"8px 10px",borderRadius:6,border:`1px solid ${DS.creamDD}`,fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none",background:DS.white};function agregarUsuario(){if(!nuevoNombre||!nuevoEmail)return;setUsuarios(p=>[...p,{id:Date.now(),nombre:nuevoNombre,email:nuevoEmail,rol:"Abogado",activo:true}]);setNuevoNombre("");setNuevoEmail("");showToast("Usuario agregado","ok");}return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}><h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>Configuración</h1><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:"0 0 24px"}}>Parámetros del sistema, usuarios y conexiones</p><Card style={{padding:"20px 24px",marginBottom:20}}><SecLabel icon="ti-adjustments">Parámetros del sistema</SecLabel><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginTop:12}}><div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:6}}>Umbral HITL (confianza mínima)</label><div style={{display:"flex",alignItems:"center",gap:12}}><input type="range" min={30} max={95} value={umbralHITL} onChange={e=>setUmbralHITL(Number(e.target.value))} style={{flex:1,accentColor:DS.gold}}/><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:700,color:DS.ink,minWidth:42}}>{umbralHITL}%</span></div><p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL,margin:"4px 0 0"}}>Casos con confianza menor van a revisión humana</p></div><div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:6}}>SLA por defecto (horas)</label><div style={{display:"flex",alignItems:"center",gap:12}}><input type="range" min={6} max={120} step={6} value={slaDefault} onChange={e=>setSlaDefault(Number(e.target.value))} style={{flex:1,accentColor:DS.gold}}/><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:700,color:DS.ink,minWidth:42}}>{slaDefault}h</span></div><p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL,margin:"4px 0 0"}}>Tiempo máximo de respuesta para casos estándar</p></div></div><div style={{display:"flex",gap:20,marginTop:20}}>{[{label:"Notificaciones Slack",val:notifSlack,set:setNotifSlack},{label:"Notificaciones Email",val:notifEmail,set:setNotifEmail}].map(({label,val,set})=>(<div key={label} style={{display:"flex",alignItems:"center",gap:10}}><button onClick={()=>set(!val)} style={{width:44,height:24,borderRadius:12,border:"none",background:val?DS.green:DS.slateXL,cursor:"pointer",position:"relative",transition:"background .2s"}}><div style={{width:18,height:18,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:val?23:3,transition:"left .2s"}}/></button><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink}}>{label}</span></div>))}</div><div style={{marginTop:16,display:"flex",justifyContent:"flex-end"}}><button onClick={()=>showToast("Configuración guardada","ok")} style={{padding:"9px 20px",borderRadius:7,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.gold}}>Guardar cambios</button></div></Card><Card style={{padding:"20px 24px",marginBottom:20}}><SecLabel icon="ti-users">Abogados y usuarios</SecLabel><div style={{marginBottom:16}}>{usuarios.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${DS.creamD}`}}><div style={{width:34,height:34,borderRadius:"50%",background:DS.ink,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:DS.gold}}>{u.nombre.split(" ").map(n=>n[0]).join("").slice(0,2)}</span></div><div style={{flex:1}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:u.activo?DS.ink:DS.slateL}}>{u.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{u.email} · {u.rol}</div></div><Chip label={u.rol} bg={u.rol==="Admin"?DS.goldFaint:DS.blueL} txt={u.rol==="Admin"?DS.gold:DS.blue} size={9}/><button onClick={()=>setUsuarios(p=>p.map(x=>x.id===u.id?{...x,activo:!x.activo}:x))} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${u.activo?DS.creamDD:DS.green}`,background:u.activo?"transparent":DS.greenL,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,color:u.activo?DS.slateL:DS.green}}>{u.activo?"Desactivar":"Activar"}</button></div>))}</div><div style={{background:DS.creamM,borderRadius:8,padding:"14px 16px"}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.slate,margin:"0 0 10px"}}>Agregar nuevo usuario</p><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><input value={nuevoNombre} onChange={e=>setNuevoNombre(e.target.value)} placeholder="Nombre completo" style={{...inp,flex:1,minWidth:140}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/><input value={nuevoEmail} onChange={e=>setNuevoEmail(e.target.value)} placeholder="Email" style={{...inp,flex:1,minWidth:180}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/><button onClick={agregarUsuario} style={{padding:"8px 16px",borderRadius:6,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.gold}}>Agregar</button></div></div></Card><Card style={{padding:"20px 24px"}}><SecLabel icon="ti-plug-connected">Conexiones del sistema</SecLabel><div style={{display:"flex",flexDirection:"column",gap:10,marginTop:8}}>{conexiones.map(c=>(<div key={c.nombre} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:DS.creamM,borderRadius:8}}><div style={{width:8,height:8,borderRadius:"50%",background:c.estado==="ok"?DS.green:DS.red,boxShadow:`0 0 6px ${c.estado==="ok"?DS.green:DS.red}`,flexShrink:0}}/><div style={{flex:1}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink}}>{c.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{c.url} · {c.detalle}</div></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:c.estado==="ok"?DS.green:DS.red,background:c.estado==="ok"?DS.greenL:DS.redL,padding:"3px 8px",borderRadius:4}}>{c.estado==="ok"?"Conectado":"Error"}</span></div>))}</div></Card></div>);}
 
 export default function PERApp(){
   const [nav,setNav]=useState("casos");
@@ -702,20 +253,45 @@ export default function PERApp(){
   },[]);
   function showToast(msg,tipo="ok"){setToast({msg,tipo});setTimeout(()=>setToast(null),3200);}
   const urgentes=CASOS_INIT.filter(c=>c.estado==="ESCALADO"||c.estado==="HITL").length;
-  return(<div style={{display:"flex",height:"100vh",background:DS.creamM,fontFamily:"'Outfit',sans-serif",overflow:"hidden",position:"relative"}}>
-    <Toast toast={toast}/>
-    <Sidebar nav={nav} setNav={setNav} urgentes={urgentes}/>
-    <div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden",minWidth:0}}>
-      <TopBar nav={nav}/>
-      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-        {nav==="casos"    &&<PantallaCasos   showToast={showToast}/>}
-        {nav==="plazos"   &&<PantallaPlazos/>}
-        {nav==="clientes" &&<PantallaClientes/>}
-        {nav==="metricas" &&<PantallaMetricas/>}
-        {nav==="sistema"  &&<PantallaSystem/>}
-        {nav==="rag"      &&<PantallaRAG/>}
-        {nav==="config"   &&<PantallaConfig showToast={showToast}/>}
+
+  const loginScreen=(
+    <div style={{display:"flex",height:"100vh",alignItems:"center",justifyContent:"center",background:DS.cream,flexDirection:"column",gap:24}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+        <div style={{width:48,height:48,background:DS.ink,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${DS.goldLine}`}}>
+          <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:26,fontWeight:700,color:DS.gold}}>P</span>
+        </div>
+        <div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:700,color:DS.ink}}>Pyme En Regla</div>
+          <div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL,letterSpacing:"0.12em",textTransform:"uppercase"}}>Panel Interno</div>
+        </div>
+      </div>
+      <SignIn />
+    </div>
+  );
+
+  const dashboard=(
+    <div style={{display:"flex",height:"100vh",background:DS.creamM,fontFamily:"'Outfit',sans-serif",overflow:"hidden",position:"relative"}}>
+      <Toast toast={toast}/>
+      <Sidebar nav={nav} setNav={setNav} urgentes={urgentes}/>
+      <div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden",minWidth:0}}>
+        <TopBar nav={nav}/>
+        <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+          {nav==="casos"    &&<PantallaCasos   showToast={showToast}/>}
+          {nav==="plazos"   &&<PantallaPlazos/>}
+          {nav==="clientes" &&<PantallaClientes/>}
+          {nav==="metricas" &&<PantallaMetricas/>}
+          {nav==="sistema"  &&<PantallaSystem/>}
+          {nav==="rag"      &&<PantallaRAG/>}
+          {nav==="config"   &&<PantallaConfig showToast={showToast}/>}
+        </div>
       </div>
     </div>
-  </div>);
+  );
+
+  return(
+    <>
+      <SignedOut>{loginScreen}</SignedOut>
+      <SignedIn>{dashboard}</SignedIn>
+    </>
+  );
 }
