@@ -405,7 +405,7 @@ function PantallaCasos({casos,actualizarEstado,actualizarNota,actualizarDatos,el
       cliente_empresa:form.empresa,
       area:form.area,
       kit:form.kit,
-      canal:form.canal.toUpperCase(),
+      canal:form.canal,
       prioridad:form.prioridad.toUpperCase(),
       asunto:form.asunto||form.consulta_raw.substring(0,120),
       consulta_raw:form.consulta_raw,
