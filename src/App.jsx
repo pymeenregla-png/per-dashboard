@@ -164,6 +164,60 @@ function ModalEditar({caso,onSave,onClose}){
     </div>
   </div>);}
 
+function ModalNuevoCaso({onSave,onClose}){
+  const[form,setForm]=useState({nombre:"",rut_persona:"",email:"",tel:"",empresa:"",rut_empresa:"",canal:"presencial",area:"Laboral",kit:"Arranque",prioridad:"MEDIA",asunto:"",consulta_raw:""});
+  const[saving,setSaving]=useState(false);
+  const inp={width:"100%",padding:"8px 10px",borderRadius:6,boxSizing:"border-box",border:`1px solid ${DS.creamDD}`,background:DS.white,fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"};
+  const sel={...inp,cursor:"pointer"};
+  const fields=[
+    ["nombre","Nombre contacto","text"],["rut_persona","RUT persona natural","text"],
+    ["email","Email","email"],["tel","Teléfono","text"],
+    ["empresa","Empresa","text"],["rut_empresa","RUT empresa","text"],
+    ["asunto","Asunto (título breve)","text"],
+  ];
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:8888,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{background:DS.white,borderRadius:12,width:560,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+      <div style={{padding:"20px 24px",borderBottom:`1px solid ${DS.creamD}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Nuevo caso manual</span>
+        <button onClick={onClose} style={{border:"none",background:"transparent",cursor:"pointer",fontSize:20,color:DS.slateL}}>×</button>
+      </div>
+      <div style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          {fields.map(([k,lbl,type])=>(<div key={k}><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>{lbl}</label><input type={type} value={form[k]||""} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={inp} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+          <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Canal</label>
+            <select value={form.canal} onChange={e=>setForm(p=>({...p,canal:e.target.value}))} style={sel} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}>
+              {["presencial","telefono","whatsapp","referido","otro"].map(c=>(<option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>))}
+            </select>
+          </div>
+          <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Área legal</label>
+            <select value={form.area} onChange={e=>setForm(p=>({...p,area:e.target.value}))} style={sel} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}>
+              {["Laboral","Contratos","Marcas","Tributario","Societario","Consumidor","Cobranza","Orientacion"].map(a=>(<option key={a} value={a}>{a}</option>))}
+            </select>
+          </div>
+          <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Kit</label>
+            <select value={form.kit} onChange={e=>setForm(p=>({...p,kit:e.target.value}))} style={sel} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}>
+              {["Arranque","Compliance","Premium"].map(k=>(<option key={k} value={k}>{k}</option>))}
+            </select>
+          </div>
+        </div>
+        <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Prioridad</label>
+          <div style={{display:"flex",gap:8}}>
+            {[["BAJA","Baja",DS.slate],["MEDIA","Normal",DS.blue],["ALTA","Alta",DS.amber],["CRITICA","Crítica",DS.red]].map(([val,lbl,color])=>(<button key={val} onClick={()=>setForm(p=>({...p,prioridad:val}))} style={{flex:1,padding:"7px",borderRadius:6,border:`1px solid ${form.prioridad===val?color:DS.creamDD}`,background:form.prioridad===val?`${color}20`:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:form.prioridad===val?700:400,color:form.prioridad===val?color:DS.slateL}}>{lbl}</button>))}
+          </div>
+        </div>
+        <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Descripción / consulta</label>
+          <textarea value={form.consulta_raw} onChange={e=>setForm(p=>({...p,consulta_raw:e.target.value}))} placeholder="Describe la situación del cliente con el mayor detalle posible…" style={{width:"100%",minHeight:100,background:DS.cream,border:`1px solid ${DS.creamDD}`,borderRadius:8,boxSizing:"border-box",padding:"10px 13px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/>
+        </div>
+      </div>
+      <div style={{padding:"16px 24px",borderTop:`1px solid ${DS.creamD}`,display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
+        {!form.nombre&&<span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL,flex:1}}>* Nombre requerido</span>}
+        <button onClick={onClose} style={{padding:"9px 18px",borderRadius:7,border:`1px solid ${DS.creamDD}`,background:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slate}}>Cancelar</button>
+        <button onClick={async()=>{if(!form.nombre)return;setSaving(true);await onSave(form);setSaving(false);}} disabled={!form.nombre||saving} style={{padding:"9px 18px",borderRadius:7,border:"none",background:form.nombre?DS.ink:"#ccc",cursor:form.nombre?"pointer":"not-allowed",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.gold}}>{saving?"Creando…":"Crear caso"}</button>
+      </div>
+    </div>
+  </div>);}
 function ModalEliminar({caso,onConfirm,onClose}){
   const[confirm,setConfirm]=useState("");const[saving,setSaving]=useState(false);
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:8888,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -353,7 +407,8 @@ function PantallaCasos({casos,actualizarEstado,actualizarNota,actualizarDatos,el
   const[filtroEstado,setFiltroEstado]=useState("TODOS");
   const[filtroArea,setFiltroArea]=useState("TODAS");
   const[modalEditar,setModalEditar]=useState(null);
-  const[modalEliminar,setModalEliminar]=useState(null);
+ const[modalEliminar,setModalEliminar]=useState(null);
+const[modalNuevo,setModalNuevo]=useState(false);
 
   useEffect(()=>{if(casos.length>0&&!selId)setSelId(casos[0].uuid);},[casos,selId]);
   const selCaso=casos.find(c=>c.uuid===selId);
@@ -424,19 +479,26 @@ function PantallaCasos({casos,actualizarEstado,actualizarNota,actualizarDatos,el
     if(e)showToast("Error al actualizar","err");
     else{showToast("Guardado en Supabase","ok");setModalEditar(null);}
   }
-  async function handleEliminar(){
-    const uuid=modalEliminar.uuid;
+ async function handleCrearCaso(form){
+  const folio="PER-"+Math.random().toString(36).substr(2,8).toUpperCase();
+  const{error:e}=await supabase.from("casos").insert({folio,contacto_nombre:form.nombre,cliente_rut:form.rut_persona||"Sin RUT",contacto_email:form.email,contacto_tel:form.tel,cliente_empresa:form.empresa,area:form.area,kit:form.kit,canal:form.canal,prioridad:form.prioridad,asunto:form.asunto||form.consulta_raw.substring(0,120),consulta_raw:form.consulta_raw,estado:"HITL",sla_horas:48,ingresado_at:new Date().toISOString()});
+  if(e)showToast("Error al crear caso","err");
+  else{showToast("Caso creado correctamente","ok");setModalNuevo(false);}
+}
+  
+    async function handleEliminar(){
+      const uuid=modalEliminar.uuid;
     const e=await eliminarCaso(uuid);
     if(e)showToast("Error al eliminar","err");
     else{showToast("Caso eliminado","warn");setModalEliminar(null);const next=casos.find(c=>c.uuid!==uuid);setSelId(next?.uuid||null);}
   }
 
-  return(<>{modalEditar&&<ModalEditar caso={modalEditar} onSave={handleSaveEditar} onClose={()=>setModalEditar(null)}/>}{modalEliminar&&<ModalEliminar caso={modalEliminar} onConfirm={handleEliminar} onClose={()=>setModalEliminar(null)}/>}
+  return(<>{modalNuevo&&<ModalNuevoCaso onSave={handleCrearCaso} onClose={()=>setModalNuevo(false)}/>{modalEditar&&<ModalEditar caso={modalEditar} onSave={handleSaveEditar} onClose={()=>setModalEditar(null)}/>}{modalEliminar&&<ModalEliminar caso={modalEliminar} onConfirm={handleEliminar} onClose={()=>setModalEliminar(null)}/>}
     <div style={{display:"flex",flex:1,overflow:"hidden"}}>
       {/* Lista */}
       <div style={{width:300,background:DS.white,borderRight:`1px solid ${DS.creamD}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
         <div style={{padding:"14px 16px 10px",background:DS.cream,borderBottom:`1px solid ${DS.creamD}`,flexShrink:0}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Casos</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{filtered.length} / {casos.length}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Casos</span><button onClick={()=>setModalNuevo(true)} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:6,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:600,color:DS.gold}}><i className="ti ti-plus" style={{fontSize:12}} aria-hidden/>Nuevo</button><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{filtered.length} / {casos.length}</span></div>
           <div style={{position:"relative",marginBottom:8}}><i className="ti ti-search" style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,color:DS.slateL}} aria-hidden/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cliente, RUT, folio, asunto…" style={{width:"100%",paddingLeft:30,height:32,background:DS.white,border:`1px solid ${DS.creamDD}`,borderRadius:7,boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{["TODOS","HITL","ESCALADO","EN_REVISION","CERRADO"].map(e=>{const cfg=ESTADO_CFG[e];const a=filtroEstado===e;return(<button key={e} onClick={()=>setFiltroEstado(e)} style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:600,padding:"3px 8px",borderRadius:4,cursor:"pointer",border:`1px solid ${a?(cfg?.dot||DS.gold):DS.creamDD}`,background:a?(cfg?cfg.bg:DS.goldFaint):"transparent",color:a?(cfg?.txt||DS.gold):DS.slateL}}>{e==="TODOS"?"Todos":cfg?.label||e}</button>);})}</div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{areas.slice(0,6).map(a=>{const active=filtroArea===a;return(<button key={a} onClick={()=>setFiltroArea(a)} style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:600,padding:"3px 8px",borderRadius:4,cursor:"pointer",border:`1px solid ${active?(AREA_COLOR[a]||DS.gold):DS.creamDD}`,background:active?`${(AREA_COLOR[a]||DS.gold)}20`:"transparent",color:active?(AREA_COLOR[a]||DS.gold):DS.slateL}}>{a==="TODAS"?"Todas":a}</button>);})}</div>
