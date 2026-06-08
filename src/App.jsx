@@ -50,12 +50,6 @@ const AREA_COLOR={Marcas:DS.purple,Societario:DS.blue,Laboral:DS.amber,Tributari
 const CANAL_ICON={"Web":"ti-world","WhatsApp":"ti-brand-whatsapp","Instagram DM":"ti-brand-instagram","web":"ti-world","whatsapp":"ti-brand-whatsapp","instagram":"ti-brand-instagram"};
 const URGENCIA_CFG={critica:{color:DS.red,bg:DS.redL},alta:{color:DS.amber,bg:DS.amberL},media:{color:DS.blue,bg:DS.blueL},baja:{color:DS.slate,bg:DS.inkFade}};
 
-const PLAZOS_INIT=[
-  {id:"PL-001",tipo:"Marca INAPI",cliente:"Constructora Austral Ltda.",asunto:"AUSTRAL BUILDS — pago final registro",fecha:"2026-06-10",diasRestantes:6,urgencia:"critica",ref:"PER-2026-0001",gestionado:false},
-  {id:"PL-002",tipo:"Laboral DT",cliente:"Clínica VetSur SpA",asunto:"Fuero maternal — acción urgente",fecha:"2026-06-08",diasRestantes:4,urgencia:"alta",ref:"PER-2026-0002",gestionado:false},
-  {id:"PL-003",tipo:"SII F29",cliente:"Panadería Don Lucho E.I.R.L.",asunto:"Formulario 29 — junio 2026",fecha:"2026-06-12",diasRestantes:8,urgencia:"media",ref:"PER-2026-0003",gestionado:false},
-];
-
 const RAG_FUENTES=[
   {id:"F01",nombre:"Ley 19.039 — Propiedad Industrial",area:"Marcas",chunks:412,estado:"ok",fecha:"2024-05-15",size:"1.2 MB"},
   {id:"F02",nombre:"Guía INAPI Clases Niza 2023",area:"Marcas",chunks:287,estado:"ok",fecha:"2024-05-15",size:"890 KB"},
@@ -87,11 +81,10 @@ function slaStatus(sla,horas){const p=horas/(sla||48);if(p>=1)return{label:"Venc
 
 function mapCaso(row){
   const horas=horasDesde(row.ingresado_at||row.created_at);
-  // Parsear JSONB si viene como string
   const parseJsonb=(v)=>{if(!v)return[];if(typeof v==="string"){try{return JSON.parse(v);}catch{return[];}}return Array.isArray(v)?v:[];};
   return{
     id:row.folio||row.id,
-    uuid:row.id, // UUID real de Supabase para webhooks
+    uuid:row.id,
     folio:(row.folio||"").split("-").pop()||"0000",
     cliente:row.contacto_nombre||row.cliente_rut||"Sin nombre",rut:row.cliente_rut||"-",
     contacto:{nombre:row.contacto_nombre||"-",email:row.contacto_email||"-",tel:row.contacto_tel||"-"},
@@ -102,7 +95,6 @@ function mapCaso(row){
     etapa:row.estado==="CERRADO"?6:row.estado==="EN_REVISION"?3:2,
     asunto:row.asunto||"Sin asunto",ingreso:row.ingresado_at||row.created_at,
     plazoCritico:row.plazo_critico||null,plazoCriticoGestionado:false,
-    // Campos v7 — trabajo del agente
     resumenIA:row.resumen_ia||"",
     acciones:parseJsonb(row.acciones_pendientes),
     fuentesRAG:parseJsonb(row.fuentes_rag),
@@ -162,7 +154,8 @@ function ModalEditar({caso,onSave,onClose}){
         <button onClick={async()=>{setSaving(true);await onSave(form);setSaving(false);}} disabled={saving} style={{padding:"9px 18px",borderRadius:7,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.gold}}>{saving?"Guardando…":"Guardar en Supabase"}</button>
       </div>
     </div>
-  </div>);}
+  </div>);
+}
 
 function ModalNuevoCaso({onSave,onClose}){
   const[form,setForm]=useState({nombre:"",rut_persona:"",email:"",tel:"",empresa:"",rut_empresa:"",canal:"presencial",area:"Laboral",kit:"Arranque",prioridad:"MEDIA",asunto:"",consulta_raw:""});
@@ -186,28 +179,35 @@ function ModalNuevoCaso({onSave,onClose}){
           {fields.map(([k,lbl,type])=>(<div key={k}><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>{lbl}</label><input type={type} value={form[k]||""} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} style={inp} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>))}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
-          <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Canal</label>
+          <div>
+            <label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Canal</label>
             <select value={form.canal} onChange={e=>setForm(p=>({...p,canal:e.target.value}))} style={sel} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}>
               {["presencial","telefono","whatsapp","referido","otro"].map(c=>(<option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>))}
             </select>
           </div>
-          <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Área legal</label>
+          <div>
+            <label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Área legal</label>
             <select value={form.area} onChange={e=>setForm(p=>({...p,area:e.target.value}))} style={sel} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}>
               {["Laboral","Contratos","Marcas","Tributario","Societario","Consumidor","Cobranza","Orientacion"].map(a=>(<option key={a} value={a}>{a}</option>))}
             </select>
           </div>
-          <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Kit</label>
+          <div>
+            <label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Kit</label>
             <select value={form.kit} onChange={e=>setForm(p=>({...p,kit:e.target.value}))} style={sel} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}>
               {["Arranque","Compliance","Premium"].map(k=>(<option key={k} value={k}>{k}</option>))}
             </select>
           </div>
         </div>
-        <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Prioridad</label>
+        <div>
+          <label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Prioridad</label>
           <div style={{display:"flex",gap:8}}>
-            {[["BAJA","Baja",DS.slate],["MEDIA","Normal",DS.blue],["ALTA","Alta",DS.amber],["CRITICA","Crítica",DS.red]].map(([val,lbl,color])=>(<button key={val} onClick={()=>setForm(p=>({...p,prioridad:val}))} style={{flex:1,padding:"7px",borderRadius:6,border:`1px solid ${form.prioridad===val?color:DS.creamDD}`,background:form.prioridad===val?`${color}20`:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:form.prioridad===val?700:400,color:form.prioridad===val?color:DS.slateL}}>{lbl}</button>))}
+            {[["BAJA","Baja",DS.slate],["MEDIA","Normal",DS.blue],["ALTA","Alta",DS.amber],["CRITICA","Crítica",DS.red]].map(([val,lbl,color])=>(
+              <button key={val} onClick={()=>setForm(p=>({...p,prioridad:val}))} style={{flex:1,padding:"7px",borderRadius:6,border:`1px solid ${form.prioridad===val?color:DS.creamDD}`,background:form.prioridad===val?`${color}20`:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:form.prioridad===val?700:400,color:form.prioridad===val?color:DS.slateL}}>{lbl}</button>
+            ))}
           </div>
         </div>
-        <div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Descripción / consulta</label>
+        <div>
+          <label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:4}}>Descripción / consulta</label>
           <textarea value={form.consulta_raw} onChange={e=>setForm(p=>({...p,consulta_raw:e.target.value}))} placeholder="Describe la situación del cliente con el mayor detalle posible…" style={{width:"100%",minHeight:100,background:DS.cream,border:`1px solid ${DS.creamDD}`,borderRadius:8,boxSizing:"border-box",padding:"10px 13px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/>
         </div>
       </div>
@@ -217,7 +217,9 @@ function ModalNuevoCaso({onSave,onClose}){
         <button onClick={async()=>{if(!form.nombre)return;setSaving(true);await onSave(form);setSaving(false);}} disabled={!form.nombre||saving} style={{padding:"9px 18px",borderRadius:7,border:"none",background:form.nombre?DS.ink:"#ccc",cursor:form.nombre?"pointer":"not-allowed",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.gold}}>{saving?"Creando…":"Crear caso"}</button>
       </div>
     </div>
-  </div>);}
+  </div>);
+}
+
 function ModalEliminar({caso,onConfirm,onClose}){
   const[confirm,setConfirm]=useState("");const[saving,setSaving]=useState(false);
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:8888,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -229,7 +231,8 @@ function ModalEliminar({caso,onConfirm,onClose}){
         <button onClick={async()=>{if(confirm!==caso.id)return;setSaving(true);await onConfirm();setSaving(false);}} disabled={confirm!==caso.id||saving} style={{padding:"9px 18px",borderRadius:7,border:"none",background:confirm===caso.id?DS.red:"#ccc",cursor:confirm===caso.id?"pointer":"not-allowed",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:"#fff"}}>{saving?"Eliminando…":"Eliminar"}</button>
       </div>
     </div>
-  </div>);}
+  </div>);
+}
 
 // ─── CASO ROW ─────────────────────────────────────────────────────────────────
 function CasoRow({caso,selected,onClick}){
@@ -256,7 +259,8 @@ function CasoRow({caso,selected,onClick}){
       <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateXL}}>{horasLabel(caso.horasTranscurridas)}</span>
     </div>
     {caso.plazoCritico&&<div style={{marginTop:6,display:"flex",alignItems:"center",gap:5,background:DS.redL,padding:"4px 8px",borderRadius:4}}><i className="ti ti-alert-triangle" style={{fontSize:11,color:DS.red}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.red,fontWeight:700}}>Plazo: {new Date(caso.plazoCritico).toLocaleDateString("es-CL")}</span></div>}
-  </div>);}
+  </div>);
+}
 
 // ─── CASO DETAIL v7 ───────────────────────────────────────────────────────────
 function CasoDetail({caso,onAccion,onEditar,onEliminar,showToast}){
@@ -277,20 +281,10 @@ function CasoDetail({caso,onAccion,onEditar,onEliminar,showToast}){
     {id:"cerrar",label:"Cierre",icon:"ti-circle-check",hidden:cerrado},
   ].filter(t=>!t.hidden);
 
-  async function handleProcesar(){
-    setProcesando(true);
-    await onAccion(caso.uuid,"procesar",null);
-    setProcesando(false);
-  }
-
-  async function handleGuardarNota(){
-    setGuardandoNota(true);
-    await onAccion(caso.uuid,"guardarNota",nota);
-    setGuardandoNota(false);
-  }
+  async function handleProcesar(){setProcesando(true);await onAccion(caso.uuid,"procesar",null);setProcesando(false);}
+  async function handleGuardarNota(){setGuardandoNota(true);await onAccion(caso.uuid,"guardarNota",nota);setGuardandoNota(false);}
 
   return(<div style={{display:"flex",flexDirection:"column",height:"100%",background:DS.white}}>
-    {/* Header */}
     <div style={{padding:"18px 24px 0",borderBottom:`1px solid ${DS.creamD}`,background:DS.cream,flexShrink:0}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
         <div style={{flex:1,minWidth:0}}>
@@ -314,13 +308,8 @@ function CasoDetail({caso,onAccion,onEditar,onEliminar,showToast}){
       {caso.plazoCritico&&(<div style={{display:"flex",alignItems:"center",gap:8,background:DS.redL,borderRadius:7,padding:"8px 12px",marginBottom:10}}><i className="ti ti-alarm" style={{fontSize:15,color:DS.red}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:DS.red}}>Plazo crítico: {new Date(caso.plazoCritico).toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long"})}</span></div>)}
       <div style={{display:"flex",gap:0,marginBottom:-1,overflowX:"auto"}}>{TABS.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===t.id?DS.gold:"transparent"}`,cursor:"pointer",transition:"all .15s",whiteSpace:"nowrap"}}><i className={`ti ${t.icon}`} style={{fontSize:12,color:tab===t.id?DS.gold:DS.slateL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:tab===t.id?700:400,color:tab===t.id?DS.gold:DS.slateL}}>{t.label}</span></button>))}</div>
     </div>
-
-    {/* Contenido */}
     <div style={{flex:1,overflowY:"auto",padding:"16px 24px"}}>
-
-      {/* ── TAB: MESA DE TRABAJO ── */}
       {tab==="mesa"&&(<>
-        {/* Botón principal: Procesar con IA */}
         {!cerrado&&(<div style={{marginBottom:20}}>
           <SecLabel icon="ti-cpu">Procesar con agente IA</SecLabel>
           <div style={{background:tieneAnalisis?DS.greenL:`${DS.gold}08`,border:`1px solid ${tieneAnalisis?DS.green+"40":DS.goldLine}`,borderRadius:10,padding:"14px 16px"}}>
@@ -330,75 +319,18 @@ function CasoDetail({caso,onAccion,onEditar,onEliminar,showToast}){
             </button>
           </div>
         </div>)}
-
-        {/* Análisis del agente */}
-        {tieneAnalisis&&(<>
-          <SecLabel icon="ti-cpu">Análisis del agente</SecLabel>
-          <div style={{background:`${DS.gold}09`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"13px 16px",marginBottom:16}}>
-            <p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.inkM,margin:0,lineHeight:1.65}}>{caso.resumenIA}</p>
-          </div>
-        </>)}
-
-        {/* Acciones pendientes del agente */}
-        {caso.acciones&&caso.acciones.length>0&&(<>
-          <SecLabel icon="ti-checklist">Acciones recomendadas por el agente</SecLabel>
-          <div style={{marginBottom:16}}>{caso.acciones.map((a,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 12px",background:DS.creamM,borderRadius:7,marginBottom:5}}><div style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${DS.slateXL}`,flexShrink:0,marginTop:1}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,lineHeight:1.5}}>{typeof a==="string"?a:JSON.stringify(a)}</span></div>))}</div>
-        </>)}
-
-        {/* Fuentes RAG */}
-        {caso.fuentesRAG&&caso.fuentesRAG.length>0&&(<>
-          <SecLabel icon="ti-database">Fuentes RAG utilizadas</SecLabel>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>{caso.fuentesRAG.map((f,i)=>(<span key={i} style={{fontFamily:"'Outfit',sans-serif",fontSize:10,background:DS.goldFaint,color:DS.gold,padding:"3px 9px",borderRadius:4,border:`1px solid ${DS.goldLine}`}}>{typeof f==="string"?f:JSON.stringify(f)}</span>))}</div>
-        </>)}
-
-        {/* Nota del abogado */}
-        {!cerrado&&(<>
-          <SecLabel icon="ti-pencil">Nota del abogado</SecLabel>
-          <textarea value={nota} onChange={e=>setNota(e.target.value)} placeholder="Análisis propio, instrucciones, observaciones legales…" style={{width:"100%",minHeight:90,background:DS.cream,border:`1px solid ${DS.creamDD}`,borderRadius:8,boxSizing:"border-box",padding:"10px 13px",fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5,marginBottom:8}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/>
-          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
-            <button onClick={handleGuardarNota} disabled={guardandoNota} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${DS.creamDD}`,background:DS.white,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:600,color:DS.slate,display:"flex",alignItems:"center",gap:5}} onMouseEnter={e=>{e.currentTarget.style.borderColor=DS.gold;e.currentTarget.style.color=DS.gold;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=DS.creamDD;e.currentTarget.style.color=DS.slate;}}>
-              <i className="ti ti-device-floppy" style={{fontSize:12}} aria-hidden/>{guardandoNota?"Guardando…":"Guardar nota"}
-            </button>
-          </div>
-        </>)}
-
-        {/* Acciones rápidas */}
-        {!cerrado&&(<>
-          <SecLabel icon="ti-bolt">Acciones</SecLabel>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <AcBtn icon="ti-check" label="Aprobar y enviar" sub="Envía respuesta al cliente" color={DS.green} onClick={()=>onAccion(caso.uuid,"aprobar",{nota})} disabled={!tieneAnalisis}/>
-            <AcBtn icon="ti-alarm" label="Escalar caso" sub="Notifica Slack del área" color={DS.amber} onClick={()=>onAccion(caso.uuid,"escalar",null)}/>
-          </div>
-          {!tieneAnalisis&&<p style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL,marginTop:6}}>* Aprobar requiere análisis del agente primero.</p>}
-        </>)}
+        {tieneAnalisis&&(<><SecLabel icon="ti-cpu">Análisis del agente</SecLabel><div style={{background:`${DS.gold}09`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"13px 16px",marginBottom:16}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.inkM,margin:0,lineHeight:1.65}}>{caso.resumenIA}</p></div></>)}
+        {caso.acciones&&caso.acciones.length>0&&(<><SecLabel icon="ti-checklist">Acciones recomendadas por el agente</SecLabel><div style={{marginBottom:16}}>{caso.acciones.map((a,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 12px",background:DS.creamM,borderRadius:7,marginBottom:5}}><div style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${DS.slateXL}`,flexShrink:0,marginTop:1}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,lineHeight:1.5}}>{typeof a==="string"?a:JSON.stringify(a)}</span></div>))}</div></>)}
+        {caso.fuentesRAG&&caso.fuentesRAG.length>0&&(<><SecLabel icon="ti-database">Fuentes RAG utilizadas</SecLabel><div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>{caso.fuentesRAG.map((f,i)=>(<span key={i} style={{fontFamily:"'Outfit',sans-serif",fontSize:10,background:DS.goldFaint,color:DS.gold,padding:"3px 9px",borderRadius:4,border:`1px solid ${DS.goldLine}`}}>{typeof f==="string"?f:JSON.stringify(f)}</span>))}</div></>)}
+        {!cerrado&&(<><SecLabel icon="ti-pencil">Nota del abogado</SecLabel><textarea value={nota} onChange={e=>setNota(e.target.value)} placeholder="Análisis propio, instrucciones, observaciones legales…" style={{width:"100%",minHeight:90,background:DS.cream,border:`1px solid ${DS.creamDD}`,borderRadius:8,boxSizing:"border-box",padding:"10px 13px",fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5,marginBottom:8}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/><div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}><button onClick={handleGuardarNota} disabled={guardandoNota} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${DS.creamDD}`,background:DS.white,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:600,color:DS.slate,display:"flex",alignItems:"center",gap:5}} onMouseEnter={e=>{e.currentTarget.style.borderColor=DS.gold;e.currentTarget.style.color=DS.gold;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=DS.creamDD;e.currentTarget.style.color=DS.slate;}}><i className="ti ti-device-floppy" style={{fontSize:12}} aria-hidden/>{guardandoNota?"Guardando…":"Guardar nota"}</button></div></>)}
+        {!cerrado&&(<><SecLabel icon="ti-bolt">Acciones</SecLabel><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><AcBtn icon="ti-check" label="Aprobar y enviar" sub="Envía respuesta al cliente" color={DS.green} onClick={()=>onAccion(caso.uuid,"aprobar",{nota})} disabled={!tieneAnalisis}/><AcBtn icon="ti-alarm" label="Escalar caso" sub="Notifica Slack del área" color={DS.amber} onClick={()=>onAccion(caso.uuid,"escalar",null)}/></div>{!tieneAnalisis&&<p style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL,marginTop:6}}>* Aprobar requiere análisis del agente primero.</p>}</>)}
       </>)}
-
-      {/* ── TAB: RESUMEN ── */}
-      {tab==="resumen"&&(<>
-        <SecLabel icon="ti-user">Datos del cliente</SecLabel>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>{[{icon:"ti-user",label:"Nombre",val:caso.contacto.nombre},{icon:"ti-id",label:"RUT",val:caso.rut},{icon:"ti-mail",label:"Email",val:caso.contacto.email},{icon:"ti-phone",label:"Teléfono",val:caso.contacto.tel}].map(({icon,label,val})=>(<div key={label} style={{background:DS.creamM,borderRadius:7,padding:"9px 12px",display:"flex",gap:8,alignItems:"flex-start"}}><i className={`ti ${icon}`} style={{fontSize:14,color:DS.slateL,marginTop:1,flexShrink:0}} aria-hidden/><div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:1}}>{label}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,fontWeight:500}}>{val||"-"}</div></div></div>))}</div>
-        {tieneAnalisis&&(<><SecLabel icon="ti-cpu">Análisis IA</SecLabel><div style={{background:`${DS.gold}09`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"13px 16px",marginBottom:16}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.inkM,margin:0,lineHeight:1.65}}>{caso.resumenIA}</p></div></>)}
-        {caso.notaAbogado&&(<><SecLabel icon="ti-pencil">Nota del abogado</SecLabel><div style={{background:DS.blueL,border:`1px solid ${DS.blue}30`,borderRadius:8,padding:"12px 14px",marginBottom:16}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.blue,margin:0,lineHeight:1.6}}>{caso.notaAbogado}</p></div></>)}
-        {caso.leccion&&(<><SecLabel icon="ti-brain">Lección aprendida</SecLabel><div style={{background:DS.greenL,border:`1px solid ${DS.green}30`,borderRadius:8,padding:"12px 14px"}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.green,margin:0,lineHeight:1.6}}>{caso.leccion}</p></div></>)}
-      </>)}
-
-      {/* ── TAB: HISTORIAL ── */}
+      {tab==="resumen"&&(<><SecLabel icon="ti-user">Datos del cliente</SecLabel><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>{[{icon:"ti-user",label:"Nombre",val:caso.contacto.nombre},{icon:"ti-id",label:"RUT",val:caso.rut},{icon:"ti-mail",label:"Email",val:caso.contacto.email},{icon:"ti-phone",label:"Teléfono",val:caso.contacto.tel}].map(({icon,label,val})=>(<div key={label} style={{background:DS.creamM,borderRadius:7,padding:"9px 12px",display:"flex",gap:8,alignItems:"flex-start"}}><i className={`ti ${icon}`} style={{fontSize:14,color:DS.slateL,marginTop:1,flexShrink:0}} aria-hidden/><div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:1}}>{label}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,fontWeight:500}}>{val||"-"}</div></div></div>))}</div>{tieneAnalisis&&(<><SecLabel icon="ti-cpu">Análisis IA</SecLabel><div style={{background:`${DS.gold}09`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"13px 16px",marginBottom:16}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.inkM,margin:0,lineHeight:1.65}}>{caso.resumenIA}</p></div></>)}{caso.notaAbogado&&(<><SecLabel icon="ti-pencil">Nota del abogado</SecLabel><div style={{background:DS.blueL,border:`1px solid ${DS.blue}30`,borderRadius:8,padding:"12px 14px",marginBottom:16}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.blue,margin:0,lineHeight:1.6}}>{caso.notaAbogado}</p></div></>)}{caso.leccion&&(<><SecLabel icon="ti-brain">Lección aprendida</SecLabel><div style={{background:DS.greenL,border:`1px solid ${DS.green}30`,borderRadius:8,padding:"12px 14px"}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.green,margin:0,lineHeight:1.6}}>{caso.leccion}</p></div></>)}</>)}
       {tab==="historial"&&(<><SecLabel icon="ti-timeline">Línea de tiempo</SecLabel>{caso.historial.map((h,i)=>{const cfgMap={sistema:{bg:DS.creamD,txt:DS.slate,lbl:"SIS"},ia:{bg:DS.goldFaint,txt:DS.gold,lbl:"IA"},abogado:{bg:DS.blueL,txt:DS.blue,lbl:"ABG"}};const c=cfgMap[h.tipo]||cfgMap.sistema;return(<div key={i} style={{display:"flex",gap:10,marginBottom:14}}><div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}><div style={{width:28,height:28,borderRadius:"50%",background:c.bg,border:`1px solid ${c.txt}30`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:800,color:c.txt}}>{c.lbl}</span></div><div style={{width:1,flex:1,background:DS.creamD,marginTop:4}}/></div><div style={{paddingBottom:4}}><div style={{display:"flex",gap:8,alignItems:"baseline",marginBottom:3}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:c.txt}}>{h.actor}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{fmtShort(h.ts)}</span></div><p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slate,margin:0,lineHeight:1.55}}>{h.msg}</p></div></div>);})}</>)}
-
-      {/* ── TAB: CIERRE ── */}
-      {tab==="cerrar"&&!cerrado&&(<>
-        <SecLabel icon="ti-brain">Lección aprendida → RAG</SecLabel>
-        <div style={{background:`${DS.gold}08`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"12px 14px",marginBottom:12}}>
-          <p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL,margin:"0 0 8px",lineHeight:1.5}}>Se guardará en Supabase y alimentará el RAG del sistema.</p>
-          <textarea value={leccion} onChange={e=>setLeccion(e.target.value)} placeholder="Ej: 'Art. 192 CT aplica incluso en segunda omisión…'" style={{width:"100%",minHeight:80,background:DS.white,border:`1px solid ${DS.goldLine}`,borderRadius:7,boxSizing:"border-box",padding:"9px 12px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.goldLine}/>
-        </div>
-        <SecLabel icon="ti-bolt">Acción final</SecLabel>
-        <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
-          <AcBtn icon="ti-circle-check" label="Cerrar caso con lección" sub="Guarda lección y marca para retro-loop RAG" color={DS.slate} onClick={()=>onAccion(caso.uuid,"cerrar",{leccion})}/>
-        </div>
-      </>)}
+      {tab==="cerrar"&&!cerrado&&(<><SecLabel icon="ti-brain">Lección aprendida → RAG</SecLabel><div style={{background:`${DS.gold}08`,border:`1px solid ${DS.goldLine}`,borderRadius:8,padding:"12px 14px",marginBottom:12}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL,margin:"0 0 8px",lineHeight:1.5}}>Se guardará en Supabase y alimentará el RAG del sistema.</p><textarea value={leccion} onChange={e=>setLeccion(e.target.value)} placeholder="Ej: 'Art. 192 CT aplica incluso en segunda omisión…'" style={{width:"100%",minHeight:80,background:DS.white,border:`1px solid ${DS.goldLine}`,borderRadius:7,boxSizing:"border-box",padding:"9px 12px",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,resize:"vertical",outline:"none",lineHeight:1.5}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.goldLine}/></div><SecLabel icon="ti-bolt">Acción final</SecLabel><div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}><AcBtn icon="ti-circle-check" label="Cerrar caso con lección" sub="Guarda lección y marca para retro-loop RAG" color={DS.slate} onClick={()=>onAccion(caso.uuid,"cerrar",{leccion})}/></div></>)}
     </div>
-  </div>);}
+  </div>);
+}
 
 // ─── PANTALLA CASOS ───────────────────────────────────────────────────────────
 function PantallaCasos({casos,actualizarEstado,actualizarNota,actualizarDatos,eliminarCaso,cerrarCaso,showToast}){
@@ -407,8 +339,8 @@ function PantallaCasos({casos,actualizarEstado,actualizarNota,actualizarDatos,el
   const[filtroEstado,setFiltroEstado]=useState("TODOS");
   const[filtroArea,setFiltroArea]=useState("TODAS");
   const[modalEditar,setModalEditar]=useState(null);
- const[modalEliminar,setModalEliminar]=useState(null);
-const[modalNuevo,setModalNuevo]=useState(false);
+  const[modalEliminar,setModalEliminar]=useState(null);
+  const[modalNuevo,setModalNuevo]=useState(false);
 
   useEffect(()=>{if(casos.length>0&&!selId)setSelId(casos[0].uuid);},[casos,selId]);
   const selCaso=casos.find(c=>c.uuid===selId);
@@ -423,21 +355,10 @@ const[modalNuevo,setModalNuevo]=useState(false);
   const areas=["TODAS",...[...new Set(casos.map(c=>c.area).filter(Boolean))]];
 
   async function handleAccion(casoUuid,tipo,data){
-    if(tipo==="cambiarEstado"){
-      const e=await actualizarEstado(casoUuid,data);
-      if(e)showToast("Error al cambiar estado","err");
-      else showToast(`Estado → ${ESTADO_CFG[data]?.label||data}`,"ok");
-      return;
-    }
-    if(tipo==="guardarNota"){
-      const e=await actualizarNota(casoUuid,data);
-      if(e)showToast("Error al guardar nota","err");
-      else showToast("Nota guardada en Supabase","ok");
-      return;
-    }
+    if(tipo==="cambiarEstado"){const e=await actualizarEstado(casoUuid,data);if(e)showToast("Error al cambiar estado","err");else showToast(`Estado → ${ESTADO_CFG[data]?.label||data}`,"ok");return;}
+    if(tipo==="guardarNota"){const e=await actualizarNota(casoUuid,data);if(e)showToast("Error al guardar nota","err");else showToast("Nota guardada en Supabase","ok");return;}
     if(tipo==="procesar"){
-      const caso=casos.find(c=>c.uuid===casoUuid);
-      if(!caso)return;
+      const caso=casos.find(c=>c.uuid===casoUuid);if(!caso)return;
       showToast("Enviando al agente IA…","info");
       await actualizarEstado(casoUuid,"EN_REVISION");
       const r=await dispararWebhook(WH.procesar,{caso_id:casoUuid,area:caso.area});
@@ -446,16 +367,14 @@ const[modalNuevo,setModalNuevo]=useState(false);
       return;
     }
     if(tipo==="aprobar"){
-      const caso=casos.find(c=>c.uuid===casoUuid);
-      showToast("Enviando aprobación…","info");
+      const caso=casos.find(c=>c.uuid===casoUuid);showToast("Enviando aprobación…","info");
       const r=await dispararWebhook(WH.aprobar,{caso_id:casoUuid,nota:data?.nota||"",folio:caso?.id,contacto_email:caso?.contacto?.email,contacto_nombre:caso?.contacto?.nombre});
       if(r.ok){await actualizarEstado(casoUuid,"CERRADO");showToast("Borrador aprobado y enviado al cliente","ok");}
       else showToast("Error al aprobar","err");
       return;
     }
     if(tipo==="escalar"){
-      showToast("Escalando caso…","info");
-      const caso=casos.find(c=>c.uuid===casoUuid);
+      showToast("Escalando caso…","info");const caso=casos.find(c=>c.uuid===casoUuid);
       const r=await dispararWebhook(WH.escalar,{caso_id:casoUuid,area:caso?.area,folio:caso?.id});
       if(r.ok){await actualizarEstado(casoUuid,"ESCALADO");showToast("Caso escalado — notificación enviada a Slack","warn");}
       else{await actualizarEstado(casoUuid,"ESCALADO");showToast("Caso escalado en Supabase","warn");}
@@ -464,12 +383,7 @@ const[modalNuevo,setModalNuevo]=useState(false);
     if(tipo==="cerrar"){
       const e=await cerrarCaso(casoUuid,data?.leccion||"");
       if(e)showToast("Error al cerrar caso","err");
-      else{
-        if(data?.leccion){
-          await dispararWebhook(WH.cerrar,{caso_id:casoUuid,leccion:data.leccion});
-        }
-        showToast("Caso cerrado y lección guardada en Supabase","ok");
-      }
+      else{if(data?.leccion){await dispararWebhook(WH.cerrar,{caso_id:casoUuid,leccion:data.leccion});}showToast("Caso cerrado y lección guardada en Supabase","ok");}
       return;
     }
   }
@@ -479,38 +393,65 @@ const[modalNuevo,setModalNuevo]=useState(false);
     if(e)showToast("Error al actualizar","err");
     else{showToast("Guardado en Supabase","ok");setModalEditar(null);}
   }
- async function handleCrearCaso(form){
-  const folio="PER-"+Math.random().toString(36).substr(2,8).toUpperCase();
-  const{error:e}=await supabase.from("casos").insert({folio,contacto_nombre:form.nombre,cliente_rut:form.rut_persona||"Sin RUT",contacto_email:form.email,contacto_tel:form.tel,cliente_empresa:form.empresa,area:form.area,kit:form.kit,canal:form.canal,prioridad:form.prioridad,asunto:form.asunto||form.consulta_raw.substring(0,120),consulta_raw:form.consulta_raw,estado:"HITL",sla_horas:48,ingresado_at:new Date().toISOString()});
-  if(e)showToast("Error al crear caso","err");
-  else{showToast("Caso creado correctamente","ok");setModalNuevo(false);}
-}
-  
-    async function handleEliminar(){
-      const uuid=modalEliminar.uuid;
+
+  async function handleCrearCaso(form){
+    const folio="PER-"+Math.random().toString(36).substr(2,8).toUpperCase();
+    const{error:e}=await supabase.from("casos").insert({
+      folio,
+      contacto_nombre:form.nombre,
+      cliente_rut:form.rut_persona||"Sin RUT",
+      contacto_email:form.email,
+      contacto_tel:form.tel,
+      cliente_empresa:form.empresa,
+      area:form.area,
+      kit:form.kit,
+      canal:form.canal,
+      prioridad:form.prioridad,
+      asunto:form.asunto||form.consulta_raw.substring(0,120),
+      consulta_raw:form.consulta_raw,
+      estado:"HITL",
+      sla_horas:48,
+      ingresado_at:new Date().toISOString(),
+    });
+    if(e)showToast("Error al crear caso","err");
+    else{showToast("Caso creado correctamente","ok");setModalNuevo(false);}
+  }
+
+  async function handleEliminar(){
+    const uuid=modalEliminar.uuid;
     const e=await eliminarCaso(uuid);
     if(e)showToast("Error al eliminar","err");
     else{showToast("Caso eliminado","warn");setModalEliminar(null);const next=casos.find(c=>c.uuid!==uuid);setSelId(next?.uuid||null);}
   }
 
-  return(<>{modalNuevo&&<ModalNuevoCaso onSave={handleCrearCaso} onClose={()=>setModalNuevo(false)}/>{modalEditar&&<ModalEditar caso={modalEditar} onSave={handleSaveEditar} onClose={()=>setModalEditar(null)}/>}{modalEliminar&&<ModalEliminar caso={modalEliminar} onConfirm={handleEliminar} onClose={()=>setModalEliminar(null)}/>}
-    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
-      {/* Lista */}
-      <div style={{width:300,background:DS.white,borderRight:`1px solid ${DS.creamD}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        <div style={{padding:"14px 16px 10px",background:DS.cream,borderBottom:`1px solid ${DS.creamD}`,flexShrink:0}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Casos</span><button onClick={()=>setModalNuevo(true)} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:6,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:600,color:DS.gold}}><i className="ti ti-plus" style={{fontSize:12}} aria-hidden/>Nuevo</button><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{filtered.length} / {casos.length}</span></div>
-          <div style={{position:"relative",marginBottom:8}}><i className="ti ti-search" style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,color:DS.slateL}} aria-hidden/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cliente, RUT, folio, asunto…" style={{width:"100%",paddingLeft:30,height:32,background:DS.white,border:`1px solid ${DS.creamDD}`,borderRadius:7,boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>
-          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{["TODOS","HITL","ESCALADO","EN_REVISION","CERRADO"].map(e=>{const cfg=ESTADO_CFG[e];const a=filtroEstado===e;return(<button key={e} onClick={()=>setFiltroEstado(e)} style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:600,padding:"3px 8px",borderRadius:4,cursor:"pointer",border:`1px solid ${a?(cfg?.dot||DS.gold):DS.creamDD}`,background:a?(cfg?cfg.bg:DS.goldFaint):"transparent",color:a?(cfg?.txt||DS.gold):DS.slateL}}>{e==="TODOS"?"Todos":cfg?.label||e}</button>);})}</div>
-          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{areas.slice(0,6).map(a=>{const active=filtroArea===a;return(<button key={a} onClick={()=>setFiltroArea(a)} style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:600,padding:"3px 8px",borderRadius:4,cursor:"pointer",border:`1px solid ${active?(AREA_COLOR[a]||DS.gold):DS.creamDD}`,background:active?`${(AREA_COLOR[a]||DS.gold)}20`:"transparent",color:active?(AREA_COLOR[a]||DS.gold):DS.slateL}}>{a==="TODAS"?"Todas":a}</button>);})}</div>
+  return(
+    <>
+      {modalNuevo&&<ModalNuevoCaso onSave={handleCrearCaso} onClose={()=>setModalNuevo(false)}/>}
+      {modalEditar&&<ModalEditar caso={modalEditar} onSave={handleSaveEditar} onClose={()=>setModalEditar(null)}/>}
+      {modalEliminar&&<ModalEliminar caso={modalEliminar} onConfirm={handleEliminar} onClose={()=>setModalEliminar(null)}/>}
+      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+        <div style={{width:300,background:DS.white,borderRight:`1px solid ${DS.creamD}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{padding:"14px 16px 10px",background:DS.cream,borderBottom:`1px solid ${DS.creamD}`,flexShrink:0}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.ink}}>Casos</span>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <button onClick={()=>setModalNuevo(true)} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:6,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:600,color:DS.gold}}><i className="ti ti-plus" style={{fontSize:12}} aria-hidden/>Nuevo</button>
+                <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{filtered.length} / {casos.length}</span>
+              </div>
+            </div>
+            <div style={{position:"relative",marginBottom:8}}><i className="ti ti-search" style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,color:DS.slateL}} aria-hidden/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cliente, RUT, folio, asunto…" style={{width:"100%",paddingLeft:30,height:32,background:DS.white,border:`1px solid ${DS.creamDD}`,borderRadius:7,boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{["TODOS","HITL","ESCALADO","EN_REVISION","CERRADO"].map(e=>{const cfg=ESTADO_CFG[e];const a=filtroEstado===e;return(<button key={e} onClick={()=>setFiltroEstado(e)} style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:600,padding:"3px 8px",borderRadius:4,cursor:"pointer",border:`1px solid ${a?(cfg?.dot||DS.gold):DS.creamDD}`,background:a?(cfg?cfg.bg:DS.goldFaint):"transparent",color:a?(cfg?.txt||DS.gold):DS.slateL}}>{e==="TODOS"?"Todos":cfg?.label||e}</button>);})}</div>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{areas.slice(0,6).map(a=>{const active=filtroArea===a;return(<button key={a} onClick={()=>setFiltroArea(a)} style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:600,padding:"3px 8px",borderRadius:4,cursor:"pointer",border:`1px solid ${active?(AREA_COLOR[a]||DS.gold):DS.creamDD}`,background:active?`${(AREA_COLOR[a]||DS.gold)}20`:"transparent",color:active?(AREA_COLOR[a]||DS.gold):DS.slateL}}>{a==="TODAS"?"Todas":a}</button>);})}</div>
+          </div>
+          <div style={{flex:1,overflowY:"auto"}}>{filtered.length===0&&<div style={{padding:"40px 20px",textAlign:"center"}}><i className="ti ti-search-off" style={{fontSize:32,color:DS.slateXL,display:"block",marginBottom:8}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL}}>Sin resultados</span></div>}{filtered.map(c=>(<CasoRow key={c.uuid} caso={c} selected={selId===c.uuid} onClick={()=>setSelId(c.uuid)}/>))}</div>
         </div>
-        <div style={{flex:1,overflowY:"auto"}}>{filtered.length===0&&<div style={{padding:"40px 20px",textAlign:"center"}}><i className="ti ti-search-off" style={{fontSize:32,color:DS.slateXL,display:"block",marginBottom:8}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL}}>Sin resultados</span></div>}{filtered.map(c=>(<CasoRow key={c.uuid} caso={c} selected={selId===c.uuid} onClick={()=>setSelId(c.uuid)}/>))}</div>
+        <div style={{flex:1,overflow:"hidden"}}>{selCaso?<CasoDetail caso={selCaso} onAccion={handleAccion} onEditar={c=>setModalEditar(c)} onEliminar={c=>setModalEliminar(c)} showToast={showToast}/>:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:12}}><i className="ti ti-briefcase" style={{fontSize:40,color:DS.slateXL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:DS.slateL}}>Selecciona un caso</span></div>}</div>
       </div>
-      {/* Detalle */}
-      <div style={{flex:1,overflow:"hidden"}}>{selCaso?<CasoDetail caso={selCaso} onAccion={handleAccion} onEditar={c=>setModalEditar(c)} onEliminar={c=>setModalEliminar(c)} showToast={showToast}/>:<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:12}}><i className="ti ti-briefcase" style={{fontSize:40,color:DS.slateXL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:DS.slateL}}>Selecciona un caso</span></div>}</div>
-    </div>
-  </>);}
+    </>
+  );
+}
 
-// ─── PANTALLAS SECUNDARIAS (sin cambios respecto v6) ──────────────────────────
+// ─── PANTALLA PLAZOS ──────────────────────────────────────────────────────────
 function PantallaPlazos(){
   const[plazos,setPlazos]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -588,7 +529,10 @@ function PantallaPlazos(){
         </Card>);
       })}</div>
     </div>)))}
-  </div>);}
+  </div>);
+}
+
+// ─── PANTALLA CLIENTES ────────────────────────────────────────────────────────
 function PantallaClientes({casos}){
   const[sel,setSel]=useState(null);
   const clientesMap=casos.reduce((acc,c)=>{const key=c.rut||c.cliente;if(!acc[key])acc[key]={rut:c.rut,nombre:c.cliente,casos:[]};acc[key].casos.push(c);return acc;},{});
@@ -600,8 +544,10 @@ function PantallaClientes({casos}){
       <div style={{flex:1,overflowY:"auto"}}>{clientes.map((cl,i)=>(<div key={i} onClick={()=>setSel(i)} style={{padding:"12px 16px",borderBottom:`1px solid ${DS.creamD}`,cursor:"pointer",background:sel===i?DS.goldFaint:DS.white,borderLeft:`3px solid ${sel===i?DS.gold:"transparent"}`}} onMouseEnter={e=>{if(sel!==i)e.currentTarget.style.background=DS.creamM;}} onMouseLeave={e=>{if(sel!==i)e.currentTarget.style.background=DS.white;}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink,marginBottom:2}}>{cl.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>RUT {cl.rut} · {cl.casos.length} caso{cl.casos.length!==1?"s":""}</div></div>))}</div>
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"24px 28px",background:DS.creamM}}>{cliente?(<><h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>{cliente.nombre}</h2><p style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slateL,margin:"0 0 20px"}}>RUT {cliente.rut} · {cliente.casos.length} caso{cliente.casos.length!==1?"s":""}</p><div style={{display:"flex",flexDirection:"column",gap:10}}>{cliente.casos.map(c=>{const est=ESTADO_CFG[c.estado]||ESTADO_CFG.PENDIENTE;return(<Card key={c.uuid} style={{padding:"14px 16px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:DS.gold}}>{c.id}</span><Chip label={est.label} dot={est.dot} bg={est.bg} txt={est.txt} size={9}/></div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.ink,marginBottom:4}}>{c.asunto}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{c.area} · {fmtDate(c.ingreso)}</div></Card>);})}</div></>):(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:12}}><i className="ti ti-building-store" style={{fontSize:40,color:DS.slateXL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:DS.slateL}}>Selecciona un cliente</span></div>)}</div>
-  </div>);}
+  </div>);
+}
 
+// ─── PANTALLA MÉTRICAS ────────────────────────────────────────────────────────
 function PantallaMetricas({casos}){
   const total=casos.length;const cerrados=casos.filter(c=>c.estado==="CERRADO").length;const hitl=casos.filter(c=>c.estado==="HITL").length;const escalados=casos.filter(c=>c.estado==="ESCALADO").length;const conAnalisis=casos.filter(c=>c.resumenIA&&c.resumenIA.length>10).length;
   const porArea=Object.entries(casos.reduce((a,c)=>{a[c.area]=(a[c.area]||0)+1;return a},{})).sort((a,b)=>b[1]-a[1]);
@@ -612,8 +558,10 @@ function PantallaMetricas({casos}){
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>{[{label:"Total casos",val:total,icon:"ti-inbox",color:DS.ink},{label:"Con análisis IA",val:conAnalisis,icon:"ti-cpu",color:DS.purple},{label:"HITL pendientes",val:hitl,icon:"ti-alert-triangle",color:DS.amber},{label:"Confianza prom.",val:`${Math.round(confPromedio*100)}%`,icon:"ti-chart-bar",color:DS.green}].map(({label,val,icon,color})=>(<Card key={label} style={{padding:"16px 18px"}}><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:6}}><i className={`ti ${icon}`} style={{fontSize:16,color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:9,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</span></div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:32,fontWeight:700,color:DS.ink}}>{val}</div></Card>))}</div>
     <Card style={{padding:"20px 24px",marginBottom:20}}><SecLabel icon="ti-chart-bar">Casos por área</SecLabel>{porArea.map(([area,cnt])=>(<div key={area} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,width:90}}>{area}</span><div style={{flex:1,height:22,background:DS.creamM,borderRadius:4,overflow:"hidden"}}><div style={{width:`${(cnt/total)*100}%`,height:"100%",background:AREA_COLOR[area]||DS.slate,borderRadius:4,transition:"width .6s"}}/></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.ink,minWidth:24}}>{cnt}</span></div>))}</Card>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{[{label:"Casos cerrados",val:cerrados,total,color:DS.green},{label:"Casos escalados",val:escalados,total,color:DS.red}].map(({label,val,total,color})=>(<Card key={label} style={{padding:"16px 18px"}}><SecLabel>{label}</SecLabel><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:32,fontWeight:700,color:DS.ink,marginBottom:8}}>{val}</div><Bar pct={total>0?(val/total)*100:0} color={color} height={6}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{total>0?Math.round((val/total)*100):0}% del total</span></Card>))}</div>
-  </div>);}
+  </div>);
+}
 
+// ─── PANTALLA SISTEMA ─────────────────────────────────────────────────────────
 function PantallaSystem(){
   const agentes=[{id:"A0",nombre:"Cerebro",canal:"Router + Clasificador",estado:"ok",color:DS.gold},{id:"A1",nombre:"Contratos",canal:"contratos-intake",estado:"ok",color:DS.slate},{id:"A2",nombre:"Marcas INAPI",canal:"marcas-intake",estado:"ok",color:DS.purple},{id:"A3",nombre:"Laboral DT",canal:"a3-laboral",estado:"ok",color:DS.amber},{id:"A4",nombre:"Tributario SII",canal:"tributario-intake",estado:"ok",color:DS.green},{id:"A5",nombre:"Societario",canal:"societario-intake",estado:"ok",color:DS.blue},{id:"A6",nombre:"Consumidor",canal:"consumidor-intake",estado:"ok",color:DS.inkM},{id:"A7",nombre:"Cobranza",canal:"cobranza-intake",estado:"ok",color:DS.red}];
   const estadoCfg={ok:{label:"Activo",color:DS.green,icon:"ti-circle-check"},warn:{label:"Alerta",color:DS.amber,icon:"ti-alert-triangle"},err:{label:"Error",color:DS.red,icon:"ti-x"}};
@@ -622,8 +570,10 @@ function PantallaSystem(){
     <p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:"0 0 20px"}}>Estado de agentes y orquestador n8n</p>
     <Card style={{padding:"16px 20px",marginBottom:20,background:DS.ink,border:`1px solid ${DS.goldLine}`}}><div style={{display:"flex",alignItems:"center",gap:12}}><div style={{width:44,height:44,borderRadius:10,background:DS.goldFaint,border:`1px solid ${DS.goldLine}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className="ti ti-brain" style={{fontSize:22,color:DS.gold}} aria-hidden/></div><div style={{flex:1}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:18,fontWeight:700,color:DS.gold}}>n8n Orquestador</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>n8n.srv1108143.hstgr.cloud · Supabase conectado · Realtime activo</div></div><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:DS.green,boxShadow:`0 0 8px ${DS.green}`}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.green}}>Operativo</span></div></div></Card>
     <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>{agentes.map(ag=>{const s=estadoCfg[ag.estado];return(<Card key={ag.id} style={{padding:"16px 18px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:36,height:36,borderRadius:8,background:ag.color,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:800,color:"#fff"}}>{ag.id}</span></div><div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink}}>{ag.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{ag.canal}</div></div></div><div style={{display:"flex",alignItems:"center",gap:5}}><i className={`ti ${s.icon}`} style={{fontSize:14,color:s.color}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:s.color}}>{s.label}</span></div></div></Card>);})}</div>
-  </div>);}
+  </div>);
+}
 
+// ─── PANTALLA RAG ─────────────────────────────────────────────────────────────
 function PantallaRAG(){
   const[filtroArea,setFiltroArea]=useState("TODAS");const[busqueda,setBusqueda]=useState("");
   const areas=["TODAS",...[...new Set(RAG_FUENTES.map(f=>f.area))]];
@@ -636,8 +586,10 @@ function PantallaRAG(){
     <Card style={{padding:"20px 24px",marginBottom:20}}><SecLabel icon="ti-chart-bar">Distribución por área</SecLabel>{porArea.sort((a,b)=>b.chunks-a.chunks).map(({area,chunks,fuentes,color})=>(<div key={area} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,width:100}}>{area}</span><div style={{flex:1,height:22,background:DS.creamM,borderRadius:4,overflow:"hidden"}}><div style={{width:`${(chunks/totalChunks)*100}%`,height:"100%",background:color,borderRadius:4,transition:"width .6s"}}/></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.ink,minWidth:60,textAlign:"right"}}>{chunks.toLocaleString("es-CL")}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL,minWidth:70}}>{fuentes} fuente{fuentes!==1?"s":""}</span></div>))}</Card>
     <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}><div style={{position:"relative",flex:1,maxWidth:320}}><i className="ti ti-search" style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",fontSize:13,color:DS.slateL}} aria-hidden/><input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar fuente…" style={{width:"100%",paddingLeft:30,height:34,background:DS.white,border:`1px solid ${DS.creamDD}`,borderRadius:7,boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/></div>{areas.map(a=>(<button key={a} onClick={()=>setFiltroArea(a)} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${filtroArea===a?DS.gold:DS.creamDD}`,background:filtroArea===a?DS.goldFaint:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:filtroArea===a?700:400,color:filtroArea===a?DS.gold:DS.slate}}>{a}</button>))}</div>
     <Card style={{overflow:"hidden"}}><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr style={{background:DS.creamM}}>{["ID","Nombre","Área","Chunks","Tamaño","Actualización","Estado"].map(h=>(<th key={h} style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",textAlign:"left",borderBottom:`1px solid ${DS.creamD}`,whiteSpace:"nowrap"}}>{h}</th>))}</tr></thead><tbody>{filtered.map((f,i)=>(<tr key={f.id} style={{borderBottom:`1px solid ${DS.creamD}`,background:i%2===0?DS.white:DS.cream}}><td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{f.id}</td><td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.ink,maxWidth:240}}><div style={{display:"flex",alignItems:"center",gap:7}}><i className="ti ti-file-text" style={{fontSize:14,color:AREA_COLOR[f.area]||DS.slate,flexShrink:0}} aria-hidden/>{f.nombre}</div></td><td style={{padding:"10px 14px"}}><span style={{background:(AREA_COLOR[f.area]||DS.slate)+"20",color:AREA_COLOR[f.area]||DS.slate,padding:"2px 8px",borderRadius:4,fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700}}>{f.area}</span></td><td style={{padding:"10px 14px",fontFamily:"'Cormorant Garamond',serif",fontSize:16,fontWeight:700,color:DS.ink}}>{f.chunks.toLocaleString("es-CL")}</td><td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{f.size}</td><td style={{padding:"10px 14px",fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{new Date(f.fecha).toLocaleDateString("es-CL")}</td><td style={{padding:"10px 14px"}}>{f.estado==="ok"?<span style={{display:"inline-flex",alignItems:"center",gap:4,background:DS.greenL,color:DS.green,padding:"2px 8px",borderRadius:4,fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700}}><i className="ti ti-circle-check" style={{fontSize:12}} aria-hidden/>OK</span>:<span style={{display:"inline-flex",alignItems:"center",gap:4,background:DS.amberL,color:DS.amber,padding:"2px 8px",borderRadius:4,fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700}}><i className="ti ti-alert-triangle" style={{fontSize:12}} aria-hidden/>Revisar</span>}</td></tr>))}</tbody></table></div></Card>
-  </div>);}
+  </div>);
+}
 
+// ─── PANTALLA CONFIG ──────────────────────────────────────────────────────────
 function PantallaConfig({showToast}){
   const[umbralHITL,setUmbralHITL]=useState(65);const[slaDefault,setSlaDefault]=useState(48);const[notifSlack,setNotifSlack]=useState(true);const[notifEmail,setNotifEmail]=useState(true);
   const[usuarios,setUsuarios]=useState([{id:1,nombre:"Kurt Leupin",email:"pymeenregla@gmail.com",rol:"Admin",activo:true}]);
@@ -651,7 +603,8 @@ function PantallaConfig({showToast}){
     <Card style={{padding:"20px 24px",marginBottom:20}}><SecLabel icon="ti-adjustments">Parámetros del sistema</SecLabel><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginTop:12}}><div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:6}}>Umbral HITL (confianza mínima)</label><div style={{display:"flex",alignItems:"center",gap:12}}><input type="range" min={30} max={95} value={umbralHITL} onChange={e=>setUmbralHITL(Number(e.target.value))} style={{flex:1,accentColor:DS.gold}}/><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:700,color:DS.ink,minWidth:42}}>{umbralHITL}%</span></div></div><div><label style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:6}}>SLA por defecto (horas)</label><div style={{display:"flex",alignItems:"center",gap:12}}><input type="range" min={6} max={120} step={6} value={slaDefault} onChange={e=>setSlaDefault(Number(e.target.value))} style={{flex:1,accentColor:DS.gold}}/><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,fontWeight:700,color:DS.ink,minWidth:42}}>{slaDefault}h</span></div></div></div><div style={{display:"flex",gap:20,marginTop:20}}>{[{label:"Notificaciones Slack",val:notifSlack,set:setNotifSlack},{label:"Notificaciones Email",val:notifEmail,set:setNotifEmail}].map(({label,val,set})=>(<div key={label} style={{display:"flex",alignItems:"center",gap:10}}><button onClick={()=>set(!val)} style={{width:44,height:24,borderRadius:12,border:"none",background:val?DS.green:DS.slateXL,cursor:"pointer",position:"relative",transition:"background .2s"}}><div style={{width:18,height:18,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:val?23:3,transition:"left .2s"}}/></button><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink}}>{label}</span></div>))}</div><div style={{marginTop:16,display:"flex",justifyContent:"flex-end"}}><button onClick={()=>showToast("Configuración guardada","ok")} style={{padding:"9px 20px",borderRadius:7,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.gold}}>Guardar cambios</button></div></Card>
     <Card style={{padding:"20px 24px",marginBottom:20}}><SecLabel icon="ti-users">Abogados y usuarios</SecLabel><div style={{marginBottom:16}}>{usuarios.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${DS.creamD}`}}><div style={{width:34,height:34,borderRadius:"50%",background:DS.ink,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,color:DS.gold}}>{u.nombre.split(" ").map(n=>n[0]).join("").slice(0,2)}</span></div><div style={{flex:1}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:u.activo?DS.ink:DS.slateL}}>{u.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{u.email} · {u.rol}</div></div><Chip label={u.rol} bg={u.rol==="Admin"?DS.goldFaint:DS.blueL} txt={u.rol==="Admin"?DS.gold:DS.blue} size={9}/></div>))}</div><div style={{background:DS.creamM,borderRadius:8,padding:"14px 16px"}}><p style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.slate,margin:"0 0 10px"}}>Agregar nuevo usuario</p><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><input value={nuevoNombre} onChange={e=>setNuevoNombre(e.target.value)} placeholder="Nombre completo" style={{...inp,flex:1,minWidth:140}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/><input value={nuevoEmail} onChange={e=>setNuevoEmail(e.target.value)} placeholder="Email" style={{...inp,flex:1,minWidth:180}} onFocus={e=>e.target.style.borderColor=DS.gold} onBlur={e=>e.target.style.borderColor=DS.creamDD}/><button onClick={agregarUsuario} style={{padding:"8px 16px",borderRadius:6,border:"none",background:DS.ink,cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.gold}}>Agregar</button></div></div></Card>
     <Card style={{padding:"20px 24px"}}><SecLabel icon="ti-plug-connected">Conexiones del sistema</SecLabel><div style={{display:"flex",flexDirection:"column",gap:10,marginTop:8}}>{conexiones.map(c=>(<div key={c.nombre} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:DS.creamM,borderRadius:8}}><div style={{width:8,height:8,borderRadius:"50%",background:c.estado==="ok"?DS.green:DS.red,boxShadow:`0 0 6px ${c.estado==="ok"?DS.green:DS.red}`,flexShrink:0}}/><div style={{flex:1}}><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink}}>{c.nombre}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{c.url} · {c.detalle}</div></div><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:c.estado==="ok"?DS.green:DS.red,background:c.estado==="ok"?DS.greenL:DS.redL,padding:"3px 8px",borderRadius:4}}>{c.estado==="ok"?"Conectado":"Error"}</span></div>))}</div></Card>
-  </div>);}
+  </div>);
+}
 
 // ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 function Sidebar({nav,setNav,urgentes,totalCasos}){
@@ -663,7 +616,8 @@ function Sidebar({nav,setNav,urgentes,totalCasos}){
     </div>
     <div style={{padding:"10px 18px",borderTop:`1px solid ${DS.creamD}`,display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:DS.green,boxShadow:`0 0 6px ${DS.green}`}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slate}}>Supabase · {totalCasos} casos</span></div>
     <div style={{padding:"12px 18px",borderTop:`1px solid ${DS.creamD}`,display:"flex",alignItems:"center",gap:10}}><div style={{width:32,height:32,borderRadius:"50%",background:DS.ink,border:`1px solid ${DS.goldLine}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.gold}}>KL</span></div><div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:600,color:DS.ink}}>Kurt Leupin</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:9,color:DS.slateL}}>Abogado · Admin</div></div></div>
-  </div>);}
+  </div>);
+}
 
 // ─── TOPBAR ───────────────────────────────────────────────────────────────────
 function TopBar({nav,urgentes,escalados,slaVencidos,lastUpdate,onRefresh}){
@@ -676,7 +630,8 @@ function TopBar({nav,urgentes,escalados,slaVencidos,lastUpdate,onRefresh}){
       <button onClick={onRefresh} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",background:DS.greenL,borderRadius:6,border:"none",cursor:"pointer"}}><i className="ti ti-refresh" style={{fontSize:13,color:DS.green}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:600,color:DS.green}}>Sincronizar</span></button>
       <div style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",background:DS.blueL,borderRadius:6}}><div style={{width:6,height:6,borderRadius:"50%",background:DS.blue}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:600,color:DS.blue}}>Supabase Live</span></div>
     </div>
-  </div>);}
+  </div>);
+}
 
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
 export default function PERApp(){
