@@ -158,7 +158,7 @@ function ModalEditar({caso,onSave,onClose}){
 }
 
 function ModalNuevoCaso({onSave,onClose}){
-  const[form,setForm]=useState({nombre:"",rut_persona:"",email:"",tel:"",empresa:"",rut_empresa:"",canal:"presencial",area:"Laboral",kit:"Arranque",prioridad:"MEDIA",asunto:"",consulta_raw:""});
+  const[form,setForm]=useState({nombre:"",rut_persona:"",email:"",tel:"",empresa:"",rut_empresa:"",canal:"Presencial",area:"Laboral",kit:"Arranque",prioridad:"MEDIA",asunto:"",consulta_raw:""});
   const[saving,setSaving]=useState(false);
   const inp={width:"100%",padding:"8px 10px",borderRadius:6,boxSizing:"border-box",border:`1px solid ${DS.creamDD}`,background:DS.white,fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.ink,outline:"none"};
   const sel={...inp,cursor:"pointer"};
