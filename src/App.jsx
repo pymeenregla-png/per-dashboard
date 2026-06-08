@@ -405,13 +405,15 @@ function PantallaCasos({casos,actualizarEstado,actualizarNota,actualizarDatos,el
       cliente_empresa:form.empresa,
       area:form.area,
       kit:form.kit,
-      canal:form.canal,
-      prioridad:form.prioridad,
+      canal:form.canal.toUpperCase(),
+      prioridad:form.prioridad.toUpperCase(),
       asunto:form.asunto||form.consulta_raw.substring(0,120),
       consulta_raw:form.consulta_raw,
-etapa_sop:1,
+      etapa_sop:1,
       estado:"HITL",
       sla_horas:48,
+      retro_enviado:false,
+      borrador_aprobado:false,
       ingresado_at:new Date().toISOString(),
     });
     if(e)showToast("Error al crear caso","err");
