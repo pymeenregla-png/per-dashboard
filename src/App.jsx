@@ -450,20 +450,103 @@ function PantallaCasos({casos,actualizarEstado,actualizarNota,actualizarDatos,el
 
 // ─── PANTALLAS SECUNDARIAS (sin cambios respecto v6) ──────────────────────────
 function PantallaPlazos(){
-  const[plazos,setPlazos]=useState(PLAZOS_INIT);
-  const grupos=[{label:"Críticos (≤7 días)",items:plazos.filter(p=>p.diasRestantes<=7&&!p.gestionado)},{label:"Próximos (8–15 días)",items:plazos.filter(p=>p.diasRestantes>7&&p.diasRestantes<=15&&!p.gestionado)},{label:"En el horizonte",items:plazos.filter(p=>p.diasRestantes>15&&!p.gestionado)},{label:"Gestionados",items:plazos.filter(p=>p.gestionado)}];
+  const[plazos,setPlazos]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[error,setError]=useState(null);
+
+  useEffect(()=>{
+    async function fetchPlazos(){
+      try{
+        const{data,error:err}=await supabase
+          .from("plazos_legales")
+          .select("*")
+          .order("fecha_vence",{ascending:true});
+        if(err)throw err;
+        const mapped=(data||[]).map(p=>{
+          const hoy=new Date();
+          hoy.setHours(0,0,0,0);
+          const vence=new Date(p.fecha_vence);
+          vence.setHours(0,0,0,0);
+          const diff=Math.round((vence-hoy)/(1000*60*60*24));
+          return{
+            id:p.id,
+            tipo:p.tipo||"General",
+            subtipo:p.subtipo||"",
+            cliente:p.asunto?.split("—")[0]?.trim()||"Cliente",
+            asunto:p.asunto||"Sin asunto",
+            fecha:p.fecha_vence,
+            diasRestantes:diff,
+            urgencia:diff<=3?"critica":diff<=7?"alta":diff<=15?"media":"baja",
+            estado:p.estado||"pendiente",
+            ref:p.caso_id||"-",
+            gestionado:p.estado==="cumplido"||p.estado==="gestionado",
+          };
+        });
+        setPlazos(mapped);
+      }catch(e){setError(e.message);}
+      finally{setLoading(false);}
+    }
+    fetchPlazos();
+    const ch=supabase.channel("plazos_rt")
+      .on("postgres_changes",{event:"*",schema:"public",table:"plazos_legales"},fetchPlazos)
+      .subscribe();
+    return()=>supabase.removeChannel(ch);
+  },[]);
+
+  async function marcarGestionado(id){
+    await supabase.from("plazos_legales").update({estado:"gestionado"}).eq("id",id);
+    setPlazos(p=>p.map(x=>x.id===id?{...x,gestionado:true,estado:"gestionado"}:x));
+  }
+
+  if(loading)return(<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,background:DS.creamM}}><i className="ti ti-loader-2" style={{fontSize:32,color:DS.slateXL,animation:"spin 1s linear infinite"}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL}}>Cargando plazos…</span></div>);
+  if(error)return(<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,background:DS.creamM}}><i className="ti ti-alert-triangle" style={{fontSize:32,color:DS.red}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL}}>{error}</span></div>);
+
+  const grupos=[
+    {label:"Críticos (≤7 días)",items:plazos.filter(p=>p.diasRestantes<=7&&!p.gestionado)},
+    {label:"Próximos (8–15 días)",items:plazos.filter(p=>p.diasRestantes>7&&p.diasRestantes<=15&&!p.gestionado)},
+    {label:"En el horizonte",items:plazos.filter(p=>p.diasRestantes>15&&!p.gestionado)},
+    {label:"Gestionados",items:plazos.filter(p=>p.gestionado)},
+  ];
+
   return(<div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:DS.creamM}}>
     <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:700,color:DS.ink,margin:"0 0 4px"}}>Agenda Legal Crítica</h1>
-    <p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:"0 0 24px"}}>Vencimientos activos — marcas INAPI, SII, DT y contratos</p>
+    <p style={{fontFamily:"'Outfit',sans-serif",fontSize:13,color:DS.slateL,margin:"0 0 24px"}}>Vencimientos activos — marcas INAPI, SII, DT y contratos · {plazos.length} plazos activos</p>
+    {plazos.length===0&&(<div style={{display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,padding:"60px 0"}}><i className="ti ti-calendar-check" style={{fontSize:40,color:DS.slateXL}} aria-hidden/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:14,color:DS.slateL}}>Sin plazos activos en este momento</span></div>)}
     {grupos.map(({label,items})=>(items.length>0&&(<div key={label} style={{marginBottom:28}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.1em"}}>{label}</span><div style={{flex:1,height:1,background:DS.creamD}}/><span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{items.length}</span></div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>{items.map(p=>{const uc=URGENCIA_CFG[p.urgencia];const diasLabel=p.gestionado?"✓":p.diasRestantes===0?"HOY":p.diasRestantes===1?"Mañana":`${p.diasRestantes}d`;return(<Card key={p.id} style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:14,opacity:p.gestionado?0.65:1}}>
-        <div style={{width:56,height:56,borderRadius:10,background:p.gestionado?DS.greenL:uc.bg,border:`1px solid ${p.gestionado?DS.green:uc.color}30`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:20,fontWeight:700,color:p.gestionado?DS.green:uc.color,lineHeight:1}}>{diasLabel}</span>{!p.gestionado&&p.diasRestantes>1&&<span style={{fontFamily:"'Outfit',sans-serif",fontSize:8,color:uc.color,fontWeight:600}}>días</span>}</div>
-        <div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:uc.color,background:uc.bg,padding:"2px 8px",borderRadius:4}}>{p.tipo}</span><span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{p.ref}</span></div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink,marginBottom:2}}>{p.cliente}</div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slate}}>{p.asunto}</div></div>
-        <div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}><div><div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>Vence</div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:15,fontWeight:700,color:DS.ink}}>{new Date(p.fecha).toLocaleDateString("es-CL",{day:"2-digit",month:"short"})}</div></div>{!p.gestionado&&<button onClick={()=>setPlazos(prev=>prev.map(x=>x.id===p.id?{...x,gestionado:true}:x))} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${DS.green}`,background:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.green,whiteSpace:"nowrap"}} onMouseEnter={e=>{e.currentTarget.style.background=DS.green;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=DS.green;}}>Marcar gestionado</button>}</div>
-      </Card>);})}</div>
-    </div>)))}</div>);}
-
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,fontWeight:700,color:DS.slateL,textTransform:"uppercase",letterSpacing:"0.1em"}}>{label}</span>
+        <div style={{flex:1,height:1,background:DS.creamD}}/>
+        <span style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>{items.length}</span>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {items.map(p=>{
+          const uc=URGENCIA_CFG[p.urgencia]||URGENCIA_CFG.baja;
+          const diasLabel=p.gestionado?"✓":p.diasRestantes<0?"VENCIDO":p.diasRestantes===0?"HOY":p.diasRestantes===1?"Mañana":`${p.diasRestantes}d`;
+          return(<Card key={p.id} style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:14,opacity:p.gestionado?0.65:1}}>
+            <div style={{width:56,height:56,borderRadius:10,background:p.gestionado?DS.greenL:p.diasRestantes<0?DS.redL:uc.bg,border:`1px solid ${p.gestionado?DS.green:p.diasRestantes<0?DS.red:uc.color}30`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:p.diasRestantes<0?14:20,fontWeight:700,color:p.gestionado?DS.green:p.diasRestantes<0?DS.red:uc.color,lineHeight:1}}>{diasLabel}</span>
+              {!p.gestionado&&p.diasRestantes>1&&<span style={{fontFamily:"'Outfit',sans-serif",fontSize:8,color:uc.color,fontWeight:600}}>días</span>}
+            </div>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                <span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:uc.color,background:uc.bg,padding:"2px 8px",borderRadius:4}}>{p.tipo}</span>
+                {p.subtipo&&<span style={{fontFamily:"'Outfit',sans-serif",fontSize:10,color:DS.slateL}}>{p.subtipo}</span>}
+              </div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:600,color:DS.ink,marginBottom:2}}>{p.cliente}</div>
+              <div style={{fontFamily:"'Outfit',sans-serif",fontSize:12,color:DS.slate}}>{p.asunto}</div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+              <div>
+                <div style={{fontFamily:"'Outfit',sans-serif",fontSize:11,color:DS.slateL}}>Vence</div>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:15,fontWeight:700,color:DS.ink}}>{new Date(p.fecha).toLocaleDateString("es-CL",{day:"2-digit",month:"short"})}</div>
+              </div>
+              {!p.gestionado&&<button onClick={()=>marcarGestionado(p.id)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${DS.green}`,background:"transparent",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:10,fontWeight:700,color:DS.green,whiteSpace:"nowrap"}} onMouseEnter={e=>{e.currentTarget.style.background=DS.green;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=DS.green;}}>Marcar gestionado</button>}
+            </div>
+          </Card>);
+        })}
+      </div>
+    </div>)))}
+  </div>);}
 function PantallaClientes({casos}){
   const[sel,setSel]=useState(null);
   const clientesMap=casos.reduce((acc,c)=>{const key=c.rut||c.cliente;if(!acc[key])acc[key]={rut:c.rut,nombre:c.cliente,casos:[]};acc[key].casos.push(c);return acc;},{});
