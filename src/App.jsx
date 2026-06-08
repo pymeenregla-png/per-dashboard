@@ -409,6 +409,7 @@ function PantallaCasos({casos,actualizarEstado,actualizarNota,actualizarDatos,el
       prioridad:form.prioridad,
       asunto:form.asunto||form.consulta_raw.substring(0,120),
       consulta_raw:form.consulta_raw,
+etapa_sop:1,
       estado:"HITL",
       sla_horas:48,
       ingresado_at:new Date().toISOString(),
