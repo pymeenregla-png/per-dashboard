@@ -75,16 +75,89 @@ const TIPOS_DOC = [
   "Carta al cliente","Informe jurídico","Carta SII","Contrato de servicios",
   "NDA","Mandato INAPI","Contrato de trabajo","Finiquito","Minuta societaria",
 ];
-const AGENTES_STATUS = [
-  { id:"A0", nombre:"Intake & Routing",   estado:"ok",   casos_hoy:12, conf_prom:0.81 },
-  { id:"A1", nombre:"Contratos",          estado:"ok",   casos_hoy:3,  conf_prom:0.79 },
-  { id:"A2", nombre:"Marcas INAPI",       estado:"warn", casos_hoy:6,  conf_prom:0.58 },
-  { id:"A3", nombre:"Laboral DT",         estado:"ok",   casos_hoy:5,  conf_prom:0.82 },
-  { id:"A4", nombre:"Tributario SII",     estado:"ok",   casos_hoy:4,  conf_prom:0.88 },
-  { id:"A5", nombre:"Societario",         estado:"err",  casos_hoy:2,  conf_prom:0.41 },
-  { id:"A6", nombre:"Consumidor SERNAC",  estado:"ok",   casos_hoy:1,  conf_prom:0.76 },
-  { id:"A7", nombre:"Cobranza 30D",       estado:"ok",   casos_hoy:2,  conf_prom:0.83 },
+// Catálogo base de agentes — nombres y orden fijos.
+// El estado y confianza se calculan en tiempo real desde Supabase (useAgentesStatus).
+const AGENTES_BASE = [
+  { id:"A0", nombre:"Intake & Routing"  },
+  { id:"A1", nombre:"Contratos"         },
+  { id:"A2", nombre:"Marcas INAPI"      },
+  { id:"A3", nombre:"Laboral DT"        },
+  { id:"A4", nombre:"Tributario SII"    },
+  { id:"A5", nombre:"Societario"        },
+  { id:"A6", nombre:"Consumidor SERNAC" },
+  { id:"A7", nombre:"Cobranza 30D"      },
 ];
+
+// Calcula estado real desde métricas:
+// err  → confianza < 0.45 o tasa escalación > 30%
+// warn → confianza entre 0.45 y 0.65
+// ok   → confianza ≥ 0.65 (o sin datos aún → ok neutro)
+function calcEstadoAgente(conf, tasaEscalacion) {
+  if (conf === null) return "ok"; // sin casos aún — neutro
+  if (conf < 0.45 || tasaEscalacion > 0.30) return "err";
+  if (conf < 0.65) return "warn";
+  return "ok";
+}
+
+// Hook que lee métricas reales de agentes desde la tabla casos
+function useAgentesStatus() {
+  const [agentes, setAgentes] = useState(
+    AGENTES_BASE.map(a => ({ ...a, estado:"ok", conf_prom:null, casos_total:0, escalados:0 }))
+  );
+
+  const fetchAgentes = useCallback(async () => {
+    try {
+      const hoy = new Date();
+      hoy.setHours(0,0,0,0);
+      const { data } = await supabase
+        .from("casos")
+        .select("agente_id, confianza_ia, estado, ingresado_at")
+        .not("agente_id", "is", null);
+
+      if (!data) return;
+
+      // Agrupar por agente_id
+      const mapa = {};
+      data.forEach(c => {
+        const id = c.agente_id;
+        if (!mapa[id]) mapa[id] = { conf_sum:0, conf_count:0, escalados:0, total:0, hoy:0 };
+        mapa[id].total++;
+        if (c.confianza_ia != null) {
+          mapa[id].conf_sum += parseFloat(c.confianza_ia);
+          mapa[id].conf_count++;
+        }
+        if (c.estado === "ESCALADO") mapa[id].escalados++;
+        if (new Date(c.ingresado_at) >= hoy) mapa[id].hoy++;
+      });
+
+      setAgentes(AGENTES_BASE.map(base => {
+        const m = mapa[base.id];
+        if (!m) return { ...base, estado:"ok", conf_prom:null, casos_total:0, escalados:0, casos_hoy:0 };
+        const conf_prom    = m.conf_count > 0 ? m.conf_sum / m.conf_count : null;
+        const tasaEscalacion = m.total > 0 ? m.escalados / m.total : 0;
+        return {
+          ...base,
+          conf_prom:    conf_prom ? parseFloat(conf_prom.toFixed(2)) : null,
+          casos_total:  m.total,
+          escalados:    m.escalados,
+          casos_hoy:    m.hoy,
+          estado:       calcEstadoAgente(conf_prom, tasaEscalacion),
+        };
+      }));
+    } catch (e) {
+      console.error("useAgentesStatus:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAgentes();
+    // Refrescar cada 2 minutos
+    const interval = setInterval(fetchAgentes, 120000);
+    return () => clearInterval(interval);
+  }, [fetchAgentes]);
+
+  return agentes;
+}
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 function timeAgo(ts) {
@@ -1714,7 +1787,7 @@ function QueueZero({ sesion }) {
 }
 
 // ─── PANTALLA: CENTRO DE MANDO ────────────────────────────────────────────────
-function PantallaHome({ casos, plazos, setNav }) {
+function PantallaHome({ casos, plazos, setNav, agentesStatus }) {
   const hitl      = casos.filter(c=>c.estado==="HITL").length;
   const escalados = casos.filter(c=>c.estado==="ESCALADO").length;
   const slaVenc   = casos.filter(c=>c.estado!=="CERRADO"&&slaInfo(c.sla_horas,c.horas_transcurridas).label==="Vencido").length;
@@ -1864,12 +1937,12 @@ function PantallaHome({ casos, plazos, setNav }) {
             <div style={{ padding:"13px 18px", borderBottom:`1px solid ${DS.border}` }}>
               <span style={{ fontFamily:DS.serif, fontSize:15, fontWeight:700, color:DS.ink }}>Estado agentes</span>
             </div>
-            {AGENTES_STATUS.map((ag,i) => {
+            {agentesStatus.map((ag,i) => {
               const color = ag.estado==="ok"?DS.green:ag.estado==="warn"?DS.amber:DS.red;
               const lbl   = ag.estado==="ok"?"OK":ag.estado==="warn"?"Atención":"Error";
               return (
                 <div key={ag.id} style={{ padding:"9px 18px",
-                  borderBottom: i<AGENTES_STATUS.length-1 ? `1px solid ${DS.border}` : "none",
+                  borderBottom: i<agentesStatus.length-1 ? `1px solid ${DS.border}` : "none",
                   display:"flex", alignItems:"center", gap:10 }}>
                   <div style={{ width:5, height:5, borderRadius:"50%", background:color, flexShrink:0 }}/>
                   <span style={{ fontFamily:DS.mono, fontSize:10, color:DS.gold, width:22 }}>{ag.id}</span>
@@ -2497,18 +2570,21 @@ function PantallaMetricas({ casos }) {
           ))}
         </div>
         <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, padding:"20px 24px" }}>
-          <SectionLabel icon="⚙">Confianza por agente</SectionLabel>
-          {AGENTES_STATUS.filter(a=>a.id!=="A0").map(ag => (
-            <div key={ag.id} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-              <span style={{ fontFamily:DS.mono, fontSize:10, color:DS.gold, width:24, fontWeight:700 }}>{ag.id}</span>
-              <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.ink, flex:1 }}>{ag.nombre}</span>
-              <div style={{ width:100 }}><ConfBar val={ag.conf_prom} showLabel={false}/></div>
-              {ag.estado!=="ok" && (
-                <div style={{ width:7, height:7, borderRadius:"50%",
-                  background:ag.estado==="err"?DS.red:DS.amber, flexShrink:0 }}/>
-              )}
-            </div>
-          ))}
+          <SectionLabel icon="⚙">Confianza por área</SectionLabel>
+          {porArea.map(({ area, count, color }) => {
+            const casosArea = casos.filter(c=>c.area===area&&c.analisis.confianza>0);
+            const confArea  = casosArea.length
+              ? casosArea.reduce((s,c)=>s+c.analisis.confianza,0)/casosArea.length : 0;
+            return (
+              <div key={area} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                <span style={{ fontFamily:DS.mono, fontSize:10, color:DS.gold, width:24, fontWeight:700 }}>
+                  {AREA_ICON[area]||"?"}
+                </span>
+                <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.ink, flex:1 }}>{area}</span>
+                <div style={{ width:100 }}><ConfBar val={confArea} showLabel={false}/></div>
+              </div>
+            );
+          })}
           <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${DS.border}` }}>
             <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
               <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.slate }}>Cerrados</span>
@@ -2526,7 +2602,7 @@ function PantallaMetricas({ casos }) {
 }
 
 // ─── PANTALLA: SISTEMA ────────────────────────────────────────────────────────
-function PantallaSystem() {
+function PantallaSystem({ agentesStatus }) {
   const CONEXIONES = [
     { nombre:"Supabase + pgvector",       estado:"ok",   detalle:"kwyicmnbquqpuoxmsxgt · São Paulo · RLS activo · Realtime on" },
     { nombre:"n8n (workflows A0–A7)",     estado:"ok",   detalle:"n8n.srv1108143.hstgr.cloud · Hostinger VPS · 8 flujos activos" },
@@ -2545,10 +2621,11 @@ function PantallaSystem() {
         Estado en tiempo real — agentes A0–A7 y conexiones
       </p>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, marginBottom:24 }}>
-        {AGENTES_STATUS.map(ag => {
+        {agentesStatus.map(ag => {
           const color = ag.estado==="ok"?DS.green:ag.estado==="warn"?DS.amber:DS.red;
           const bg    = ag.estado==="ok"?DS.greenL:ag.estado==="warn"?DS.amberL:DS.redL;
           const lbl   = ag.estado==="ok"?"Operativo":ag.estado==="warn"?"Atención":"Error";
+          const confVal = ag.conf_prom ?? 0;
           return (
             <div key={ag.id} style={{ background:DS.bgCard,
               border:`1px solid ${ag.estado!=="ok"?color:DS.border}`, borderRadius:10, padding:"16px 18px" }}>
@@ -2561,19 +2638,28 @@ function PantallaSystem() {
                   </div>
                   <div>
                     <div style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.ink }}>{ag.nombre}</div>
-                    <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL }}>{ag.casos_hoy} casos hoy</div>
+                    <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL }}>
+                      {ag.casos_total > 0
+                        ? `${ag.casos_total} caso${ag.casos_total!==1?"s":""} · ${ag.escalados} escalado${ag.escalados!==1?"s":""}`
+                        : "Sin casos aún"}
+                    </div>
                   </div>
                 </div>
                 <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700, color,
                   background:bg, padding:"3px 9px", borderRadius:4 }}>{lbl}</span>
               </div>
-              <ConfBar val={ag.conf_prom}/>
+              {ag.conf_prom !== null
+                ? <ConfBar val={confVal}/>
+                : <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, fontStyle:"italic" }}>
+                    Sin datos de confianza aún
+                  </div>
+              }
               {ag.estado!=="ok" && (
                 <div style={{ marginTop:10, padding:"8px 12px", background:bg, borderRadius:7 }}>
                   <span style={{ fontFamily:DS.sans, fontSize:11, color }}>
                     {ag.estado==="err"
-                      ? "⚑ Requiere intervención — confianza crítica"
-                      : "⚠ Tasa de escalación elevada — revisar prompt"}
+                      ? "⚑ Requiere intervención — confianza crítica o escalación alta"
+                      : "⚠ Tasa de escalación elevada o confianza baja — revisar prompt"}
                   </span>
                 </div>
               )}
@@ -2944,6 +3030,9 @@ export default function PERApp() {
   // Plazos Supabase
   const { plazos, loading:loadingPlazos, marcarGestionado } = usePlazosSupabase();
 
+  // Estado real de agentes desde Supabase
+  const agentesStatus = useAgentesStatus();
+
   // Fuentes
   useEffect(() => {
     // Google Fonts — Cormorant Garamond + Outfit + JetBrains Mono
@@ -3010,7 +3099,6 @@ export default function PERApp() {
 
   const hitlCount   = casos.filter(c=>c.estado==="HITL"||c.estado==="ESCALADO").length;
   const plazosCount = plazos.filter(p=>p.dias<=3&&!p.gestionado).length;
-  const agentesErr  = AGENTES_STATUS.filter(a=>a.estado!=="ok").length;
 
   // Pantalla de dashboard
   const dashboard = (
@@ -3036,7 +3124,8 @@ export default function PERApp() {
       {modalNuevo && <ModalNuevoCaso onSave={handleNuevoCaso} onClose={()=>setModalNuevo(false)}/>}
 
       <Sidebar nav={nav} setNav={setNav} hitlCount={hitlCount} plazosCount={plazosCount}
-        agentesErr={agentesErr} collapsed={collapsed} setCollapsed={setCollapsed}
+        agentesErr={agentesStatus.filter(a=>a.estado!=="ok").length}
+        collapsed={collapsed} setCollapsed={setCollapsed}
         onCmd={()=>setCmdOpen(true)} lastUpdate={lastUpdate}/>
 
       <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden", minWidth:0 }}>
@@ -3075,7 +3164,7 @@ export default function PERApp() {
           )}
 
           {/* Screens */}
-          {!loading && !error && nav==="home"     && <PantallaHome casos={casos} plazos={plazos} setNav={setNav}/>}
+          {!loading && !error && nav==="home"     && <PantallaHome casos={casos} plazos={plazos} setNav={setNav} agentesStatus={agentesStatus}/>}
           {!loading && !error && nav==="hitl"     && (
             <PantallaCasos casos={casos} actualizarEstado={actualizarEstado}
               actualizarNota={actualizarNota} actualizarDatos={actualizarDatos}
@@ -3097,7 +3186,7 @@ export default function PERApp() {
           )}
           {!loading && !error && nav==="clientes" && <PantallaClientes casos={casos}/>}
           {!loading && !error && nav==="metricas" && <PantallaMetricas casos={casos}/>}
-          {!loading && !error && nav==="sistema"  && <PantallaSystem/>}
+          {!loading && !error && nav==="sistema"  && <PantallaSystem agentesStatus={agentesStatus}/>}
           {!loading && !error && nav==="rag"      && <PantallaRAG/>}
           {!loading && !error && nav==="config"   && <PantallaConfig showToast={showToast}/>}
         </div>
