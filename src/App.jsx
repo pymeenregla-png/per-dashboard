@@ -88,60 +88,96 @@ const AGENTES_BASE = [
   { id:"A7", nombre:"Cobranza 30D"      },
 ];
 
-// Calcula estado real desde métricas:
-// err  → confianza < 0.45 o tasa escalación > 30%
-// warn → confianza entre 0.45 y 0.65
-// ok   → confianza ≥ 0.65 (o sin datos aún → ok neutro)
-function calcEstadoAgente(conf, tasaEscalacion) {
-  if (conf === null) return "ok"; // sin casos aún — neutro
-  if (conf < 0.45 || tasaEscalacion > 0.30) return "err";
-  if (conf < 0.65) return "warn";
-  return "ok";
-}
+// ─── SALUD REAL DE AGENTES ───────────────────────────────────────────────────
+// Dos verdades separadas, sin inventar nada:
+//   OPERATIVO → ¿corre? (última ejecución real en analisis_agente.procesado_en)
+//   CALIDAD   → ¿responde bien? (confianza promedio + tasa de escalación)
+// Un agente puede estar vivo con mala calidad, o dormido aunque su última
+// corrida fuera buena. El panel muestra ambas cosas por separado.
+const AREA_A_AGENTE = {
+  Contratos:"A1", Marcas:"A2", Laboral:"A3", Tributario:"A4",
+  Societario:"A5", Consumidor:"A6", Cobranza:"A7", Orientacion:"A0", Otro:"A0",
+};
+const HORAS_DORMIDO = 72; // 3 días sin correr teniendo cola = alerta
 
-// Hook que lee métricas reales de agentes desde la tabla casos
 function useAgentesStatus() {
   const [agentes, setAgentes] = useState(
-    AGENTES_BASE.map(a => ({ ...a, estado:"ok", conf_prom:null, casos_total:0, escalados:0 }))
+    AGENTES_BASE.map(a => ({
+      ...a, estado:"ok", operativo:"sin_datos", salud:"sin_datos",
+      conf_prom:null, casos_total:0, escalados:0, tipados:0,
+      ultimo_run:null, horas_desde_run:null, pendientes_area:0,
+    }))
   );
 
   const fetchAgentes = useCallback(async () => {
     try {
-      const hoy = new Date();
-      hoy.setHours(0,0,0,0);
-      const { data } = await supabase
-        .from("casos")
-        .select("agente_id, confianza_ia, estado, ingresado_at")
-        .not("agente_id", "is", null);
+      const [casosRes, tipadosRes] = await Promise.all([
+        supabase.from("casos").select("agente_id, area, confianza_ia, estado"),
+        supabase.from("analisis_agente").select("agente, confianza, escalar, procesado_en"),
+      ]);
+      const casosData   = casosRes.data   || [];
+      const tipadosData = tipadosRes.data || [];
 
-      if (!data) return;
-
-      // Agrupar por agente_id
-      const mapa = {};
-      data.forEach(c => {
-        const id = c.agente_id;
-        if (!mapa[id]) mapa[id] = { conf_sum:0, conf_count:0, escalados:0, total:0, hoy:0 };
-        mapa[id].total++;
-        if (c.confianza_ia != null) {
-          mapa[id].conf_sum += parseFloat(c.confianza_ia);
-          mapa[id].conf_count++;
+      // Cola pendiente por agente (casos HITL/ESCALADO mapeados por área)
+      const pend = {};
+      casosData.forEach(c => {
+        if (c.estado === "HITL" || c.estado === "ESCALADO") {
+          const ag = AREA_A_AGENTE[c.area] || "A0";
+          pend[ag] = (pend[ag] || 0) + 1;
         }
-        if (c.estado === "ESCALADO") mapa[id].escalados++;
-        if (new Date(c.ingresado_at) >= hoy) mapa[id].hoy++;
+      });
+
+      // Volumen + calidad por agente (desde casos)
+      const mapa = {};
+      const push = id => (mapa[id] ||= { conf_sum:0, conf_count:0, escalados:0, total:0, tipados:0, ultimo:null });
+      casosData.forEach(c => {
+        if (!c.agente_id) return;
+        const m = push(c.agente_id);
+        m.total++;
+        if (c.confianza_ia != null) { m.conf_sum += parseFloat(c.confianza_ia); m.conf_count++; }
+        if (c.estado === "ESCALADO") m.escalados++;
+      });
+
+      // Última corrida REAL + conteo de análisis tipados (desde analisis_agente)
+      tipadosData.forEach(t => {
+        if (!t.agente) return;
+        const m = push(t.agente);
+        m.tipados++;
+        const ts = t.procesado_en ? new Date(t.procesado_en) : null;
+        if (ts && (!m.ultimo || ts > m.ultimo)) m.ultimo = ts;
       });
 
       setAgentes(AGENTES_BASE.map(base => {
-        const m = mapa[base.id];
-        if (!m) return { ...base, estado:"ok", conf_prom:null, casos_total:0, escalados:0, casos_hoy:0 };
-        const conf_prom    = m.conf_count > 0 ? m.conf_sum / m.conf_count : null;
-        const tasaEscalacion = m.total > 0 ? m.escalados / m.total : 0;
+        const m = mapa[base.id] || {};
+        const pendientes = pend[base.id] || 0;
+        const conf = m.conf_count > 0 ? m.conf_sum / m.conf_count : null;
+        const tasa = m.total > 0 ? m.escalados / m.total : 0;
+        const horasRun = m.ultimo ? Math.floor((Date.now() - m.ultimo.getTime()) / 3600000) : null;
+
+        let operativo;
+        if (m.ultimo == null)                              operativo = pendientes > 0 ? "sin_correr" : "sin_datos";
+        else if (horasRun >= HORAS_DORMIDO && pendientes)  operativo = "dormido";
+        else                                               operativo = "vivo";
+
+        let salud;
+        if (conf == null)                    salud = "sin_datos";
+        else if (conf < 0.45 || tasa > 0.30) salud = "critico";
+        else if (conf < 0.65)                salud = "atencion";
+        else                                 salud = "sano";
+
+        const estado =
+          (salud === "critico" || operativo === "dormido" || operativo === "sin_correr") ? "err"
+          : salud === "atencion" ? "warn" : "ok";
+
         return {
-          ...base,
-          conf_prom:    conf_prom ? parseFloat(conf_prom.toFixed(2)) : null,
-          casos_total:  m.total,
-          escalados:    m.escalados,
-          casos_hoy:    m.hoy,
-          estado:       calcEstadoAgente(conf_prom, tasaEscalacion),
+          ...base, estado, operativo, salud,
+          conf_prom:   conf ? parseFloat(conf.toFixed(2)) : null,
+          casos_total: m.total || 0,
+          escalados:   m.escalados || 0,
+          tipados:     m.tipados || 0,
+          ultimo_run:  m.ultimo ? m.ultimo.toISOString() : null,
+          horas_desde_run: horasRun,
+          pendientes_area: pendientes,
         };
       }));
     } catch (e) {
@@ -151,7 +187,6 @@ function useAgentesStatus() {
 
   useEffect(() => {
     fetchAgentes();
-    // Refrescar cada 2 minutos
     const interval = setInterval(fetchAgentes, 120000);
     return () => clearInterval(interval);
   }, [fetchAgentes]);
@@ -305,9 +340,12 @@ function useCasosSupabase() {
   }, [fetchCasos]);
 
   const actualizarEstado = useCallback(async (uuid, estado) => {
+    const now = new Date().toISOString();
+    const patch = { estado, ultima_accion_at: now };
+    if (estado === "CERRADO") patch.cerrado_at = now;   // verdad de cierre
     const { error: e } = await supabase
       .from("casos")
-      .update({ estado, ultima_accion_at: new Date().toISOString() })
+      .update(patch)
       .eq("id", uuid);
     if (!e) setCasos(p => p.map(c => c.uuid === uuid ? { ...c, estado } : c));
     return e;
@@ -2602,7 +2640,11 @@ function PantallaMetricas({ casos }) {
 }
 
 // ─── PANTALLA: SISTEMA ────────────────────────────────────────────────────────
+// Vida operativa de agentes (¿corre?) + calidad (¿responde bien?) + conexiones.
 function PantallaSystem({ agentesStatus }) {
+  const enAlerta = agentesStatus.filter(a =>
+    a.operativo==="dormido" || a.operativo==="sin_correr" || a.salud==="critico").length;
+
   const CONEXIONES = [
     { nombre:"Supabase + pgvector",       estado:"ok",   detalle:"kwyicmnbquqpuoxmsxgt · São Paulo · RLS activo · Realtime on" },
     { nombre:"n8n (workflows A0–A7)",     estado:"ok",   detalle:"n8n.srv1108143.hstgr.cloud · Hostinger VPS · 8 flujos activos" },
@@ -2614,22 +2656,43 @@ function PantallaSystem({ agentesStatus }) {
     { nombre:"Clerk Auth",                estado:"warn", detalle:"Modo desarrollo — activar producción antes de abrir acceso" },
   ];
 
+  const chipOp = (a) => {
+    if (a.operativo==="vivo")       return { txt:"Vivo",            c:DS.green, bg:DS.greenL };
+    if (a.operativo==="dormido")    return { txt:`Dormido · ${a.horas_desde_run}h`, c:DS.red, bg:DS.redL };
+    if (a.operativo==="sin_correr") return { txt:"No ha corrido",   c:DS.amber, bg:DS.amberL };
+    return { txt:"Sin actividad",   c:DS.slate, bg:DS.border };
+  };
+  const calidadTxt = (a) =>
+    a.salud==="sano" ? "Calidad sana" :
+    a.salud==="atencion" ? "Confianza baja" :
+    a.salud==="critico" ? "Calidad crítica" : "Sin confianza medida";
+
   return (
     <div style={{ flex:1, overflowY:"auto", padding:"28px 32px", background:DS.bg }}>
-      <h1 style={{ fontFamily:DS.serif, fontSize:28, fontWeight:700, color:DS.ink, margin:"0 0 4px" }}>Sistema IA</h1>
-      <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL, margin:"0 0 24px" }}>
-        Estado en tiempo real — agentes A0–A7 y conexiones
-      </p>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, marginBottom:24 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:8 }}>
+        <div>
+          <h1 style={{ fontFamily:DS.serif, fontSize:28, fontWeight:700, color:DS.ink, margin:"0 0 4px" }}>Sistema IA</h1>
+          <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL, margin:0 }}>
+            Agentes A0–A7 · vida operativa y calidad en tiempo real desde Supabase
+          </p>
+        </div>
+        <div style={{ textAlign:"right" }}>
+          <div style={{ fontFamily:DS.serif, fontSize:30, fontWeight:700,
+            color: enAlerta>0?DS.red:DS.green, lineHeight:1 }}>{enAlerta}</div>
+          <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL,
+            textTransform:"uppercase", letterSpacing:"0.08em" }}>Agentes en alerta</div>
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, margin:"20px 0 24px" }}>
         {agentesStatus.map(ag => {
-          const color = ag.estado==="ok"?DS.green:ag.estado==="warn"?DS.amber:DS.red;
-          const bg    = ag.estado==="ok"?DS.greenL:ag.estado==="warn"?DS.amberL:DS.redL;
-          const lbl   = ag.estado==="ok"?"Operativo":ag.estado==="warn"?"Atención":"Error";
-          const confVal = ag.conf_prom ?? 0;
+          const op = chipOp(ag);
+          const alerta = ag.operativo==="dormido" || ag.operativo==="sin_correr" || ag.salud==="critico";
+          const borde = alerta ? op.c : DS.border;
           return (
-            <div key={ag.id} style={{ background:DS.bgCard,
-              border:`1px solid ${ag.estado!=="ok"?color:DS.border}`, borderRadius:10, padding:"16px 18px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
+            <div key={ag.id} style={{ background:DS.bgCard, border:`1px solid ${borde}`,
+              borderRadius:10, padding:"16px 18px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <div style={{ width:34, height:34, borderRadius:7, background:DS.ink,
                     border:`1px solid ${DS.goldLine}`, display:"flex", alignItems:"center",
@@ -2639,27 +2702,35 @@ function PantallaSystem({ agentesStatus }) {
                   <div>
                     <div style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.ink }}>{ag.nombre}</div>
                     <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL }}>
-                      {ag.casos_total > 0
-                        ? `${ag.casos_total} caso${ag.casos_total!==1?"s":""} · ${ag.escalados} escalado${ag.escalados!==1?"s":""}`
-                        : "Sin casos aún"}
+                      {ag.ultimo_run
+                        ? `Última corrida hace ${timeAgo(ag.ultimo_run)}`
+                        : "Nunca ha corrido"}
+                      {ag.pendientes_area > 0 && ` · ${ag.pendientes_area} en cola`}
                     </div>
                   </div>
                 </div>
-                <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700, color,
-                  background:bg, padding:"3px 9px", borderRadius:4 }}>{lbl}</span>
+                <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700, color:op.c,
+                  background:op.bg, padding:"3px 9px", borderRadius:4, whiteSpace:"nowrap" }}>{op.txt}</span>
               </div>
+
               {ag.conf_prom !== null
-                ? <ConfBar val={confVal}/>
+                ? <ConfBar val={ag.conf_prom}/>
                 : <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, fontStyle:"italic" }}>
                     Sin datos de confianza aún
-                  </div>
-              }
-              {ag.estado!=="ok" && (
-                <div style={{ marginTop:10, padding:"8px 12px", background:bg, borderRadius:7 }}>
-                  <span style={{ fontFamily:DS.sans, fontSize:11, color }}>
-                    {ag.estado==="err"
-                      ? "⚑ Requiere intervención — confianza crítica o escalación alta"
-                      : "⚠ Tasa de escalación elevada o confianza baja — revisar prompt"}
+                  </div>}
+              <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, marginTop:6 }}>
+                {calidadTxt(ag)}
+                {ag.casos_total > 0 && ` · ${ag.casos_total} caso${ag.casos_total!==1?"s":""} · ${ag.escalados} escalado${ag.escalados!==1?"s":""} · ${ag.tipados} tipado${ag.tipados!==1?"s":""}`}
+              </div>
+
+              {alerta && (
+                <div style={{ marginTop:10, padding:"8px 12px", background:op.bg, borderRadius:7 }}>
+                  <span style={{ fontFamily:DS.sans, fontSize:11, color:op.c }}>
+                    {ag.operativo==="dormido"
+                      ? `⚑ ${ag.pendientes_area} caso(s) en cola y sin correr hace ${ag.horas_desde_run}h — revisar workflow n8n de esta área`
+                      : ag.operativo==="sin_correr"
+                        ? "⚠ Hay casos en cola pero el agente nunca ejecutó — verificar webhook/trigger"
+                        : "⚑ Confianza crítica o escalación alta — reforzar prompt y RAG del área"}
                   </span>
                 </div>
               )}
@@ -2667,6 +2738,7 @@ function PantallaSystem({ agentesStatus }) {
           );
         })}
       </div>
+
       <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, overflow:"hidden" }}>
         <div style={{ padding:"16px 20px", borderBottom:`1px solid ${DS.border}` }}>
           <SectionLabel icon="◈">Conexiones del sistema</SectionLabel>
