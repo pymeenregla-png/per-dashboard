@@ -1,12 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-//  PER — Panel Interno v3 · Motor real Supabase + n8n + Clerk
-//  Filosofía: el abogado revisa y aprueba casos cientos de veces. Ese gesto debe
-//  ser tan fluido que se sienta inevitable. Velocidad (teclado), anticipación
-//  (el sistema sugiere), flujo (nunca interrumpir el ritmo).
+//  PER — Panel Interno v4
+//  Cinco secciones. Nada más, nada menos.
+//  Hoy: qué necesita mi atención. Revisar: decidir rápido. Casos: encontrar.
+//  Agenda: que nada venza. Sistema: la verdad sobre los agentes.
+//  Todo lo que se muestra es real. Lo que no era real, se eliminó.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { SignIn, SignedIn, SignedOut } from "@clerk/clerk-react";
+import { useState, useEffect, useCallback, useRef, useMemo, Component } from "react";
+import { SignIn, SignedIn, SignedOut, useClerk } from "@clerk/clerk-react";
 import { supabase } from "./lib/supabase";
 
 // ─── WEBHOOKS n8n ─────────────────────────────────────────────────────────────
@@ -15,6 +16,7 @@ const WH = {
   aprobar:  "https://n8n.srv1108143.hstgr.cloud/webhook/per-aprobar",
   escalar:  "https://n8n.srv1108143.hstgr.cloud/webhook/per-escalar",
   cerrar:   "https://n8n.srv1108143.hstgr.cloud/webhook/per-cerrar",
+  info:     "https://n8n.srv1108143.hstgr.cloud/webhook/per-solicitar-info",
 };
 
 async function dispararWebhook(url, payload) {
@@ -33,9 +35,9 @@ async function dispararWebhook(url, payload) {
 // ─── DESIGN SYSTEM ────────────────────────────────────────────────────────────
 const DS = {
   bg:"#F6F3EE", bgCard:"#FFFFFF", bgSide:"#0C1B2E", bgInput:"#FDFBF8",
-  ink:"#0C1B2E", inkM:"#1F3A5F", inkL:"#3A5578",
+  ink:"#0C1B2E", inkM:"#1F3A5F",
   slate:"#5A6B7E", slateL:"#8A9BAE", slateXL:"#C4D0DC",
-  gold:"#B8943A", goldL:"#CCA84A", goldFaint:"rgba(184,148,58,0.09)",
+  gold:"#B8943A", goldFaint:"rgba(184,148,58,0.09)",
   goldLine:"rgba(184,148,58,0.22)", goldDim:"rgba(184,148,58,0.45)",
   border:"#E8E2D8", borderM:"#D8D0C4",
   green:"#1A5E42", greenL:"rgba(26,94,66,0.11)", greenXL:"rgba(26,94,66,0.06)",
@@ -59,24 +61,13 @@ const AREA_ICON = {
   Societario:"S", Consumidor:"CO", Cobranza:"CB", Orientacion:"O", Otro:"?",
 };
 const ESTADO_CFG = {
-  HITL:        { label:"HITL Pendiente", dot:DS.amber, bg:DS.amberL, txt:DS.amber },
-  EN_REVISION: { label:"En Revisión",    dot:DS.blue,  bg:DS.blueL,  txt:DS.blue },
-  ESCALADO:    { label:"Escalado",       dot:DS.red,   bg:DS.redL,   txt:DS.red },
-  CERRADO:     { label:"Cerrado",        dot:DS.green, bg:DS.greenL, txt:DS.green },
-  PENDIENTE:   { label:"Pendiente",      dot:DS.slate, bg:DS.border, txt:DS.slate },
-  PROCESANDO:  { label:"Procesando…",   dot:DS.purple,bg:DS.purpleL,txt:DS.purple },
+  HITL:        { label:"Pendiente",   dot:DS.amber, bg:DS.amberL, txt:DS.amber },
+  EN_REVISION: { label:"En proceso",  dot:DS.blue,  bg:DS.blueL,  txt:DS.blue },
+  ESCALADO:    { label:"Escalado",    dot:DS.red,   bg:DS.redL,   txt:DS.red },
+  CERRADO:     { label:"Cerrado",     dot:DS.green, bg:DS.greenL, txt:DS.green },
+  PENDIENTE:   { label:"Nuevo",       dot:DS.slate, bg:DS.border, txt:DS.slate },
+  PROCESANDO:  { label:"Procesando…", dot:DS.purple,bg:DS.purpleL,txt:DS.purple },
 };
-const RIESGO_CFG = {
-  alto:  { color:DS.red,   bg:DS.redL },
-  medio: { color:DS.amber, bg:DS.amberL },
-  bajo:  { color:DS.green, bg:DS.greenL },
-};
-const TIPOS_DOC = [
-  "Carta al cliente","Informe jurídico","Carta SII","Contrato de servicios",
-  "NDA","Mandato INAPI","Contrato de trabajo","Finiquito","Minuta societaria",
-];
-// Catálogo base de agentes — nombres y orden fijos.
-// El estado y confianza se calculan en tiempo real desde Supabase (useAgentesStatus).
 const AGENTES_BASE = [
   { id:"A0", nombre:"Intake & Routing"  },
   { id:"A1", nombre:"Contratos"         },
@@ -85,10 +76,307 @@ const AGENTES_BASE = [
   { id:"A4", nombre:"Tributario SII"    },
   { id:"A5", nombre:"Societario"        },
   { id:"A6", nombre:"Consumidor SERNAC" },
-  { id:"A7", nombre:"Cobranza 30D"      },
+  { id:"A7", nombre:"Cobranza"          },
 ];
 
-// ─── SALUD REAL DE AGENTES ───────────────────────────────────────────────────
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+function timeAgo(ts) {
+  const m = (Date.now() - new Date(ts)) / 60000;
+  if (m < 60)   return `${Math.round(m)}m`;
+  if (m < 1440) return `${Math.round(m/60)}h`;
+  return `${Math.round(m/1440)}d`;
+}
+function fmtDate(ts) {
+  if (!ts) return "-";
+  return new Date(ts).toLocaleDateString("es-CL",{
+    day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit",
+  });
+}
+function horasDesde(ts) {
+  if (!ts) return 0;
+  return Math.floor((Date.now() - new Date(ts).getTime()) / 3600000);
+}
+function slaInfo(sla, h) {
+  const p = h / (sla || 48);
+  if (p >= 1)   return { label:"Vencido", color:DS.red,   pct:100 };
+  if (p >= 0.7) return { label:"Urgente", color:DS.amber, pct:Math.round(p*100) };
+  return               { label:"En plazo", color:DS.green, pct:Math.round(p*100) };
+}
+function saludo() {
+  const h = new Date().getHours();
+  if (h < 12) return "Buenos días";
+  if (h < 19) return "Buenas tardes";
+  return "Buenas noches";
+}
+// Convierte cualquier formato (JSONB array, string JSON, texto plano) en lista limpia
+function toList(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.filter(Boolean);
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s || s === "[]") return [];
+    try {
+      const p = JSON.parse(s);
+      return Array.isArray(p) ? p.filter(Boolean) : [String(p)];
+    } catch {
+      return s.split(/\n|;(?!\d)/).map(x => x.trim()).filter(Boolean);
+    }
+  }
+  return [v];
+}
+
+// ─── MAPEADOR SUPABASE → MODELO INTERNO ──────────────────────────────────────
+// Une la fila de casos con su análisis tipado más reciente de analisis_agente.
+// Si el análisis tipado existe, es la fuente de verdad. Si no, cae a los
+// campos legacy de casos. El dashboard nunca inventa datos.
+function mapCaso(row) {
+  const horas = horasDesde(row.ingresado_at || row.created_at);
+
+  // Análisis tipado más reciente (join con analisis_agente)
+  const analisisRows = Array.isArray(row.analisis_agente) ? row.analisis_agente : [];
+  const tipado = analisisRows.length
+    ? [...analisisRows].sort((a,b) => new Date(b.procesado_en) - new Date(a.procesado_en))[0]
+    : null;
+
+  const confianza = tipado?.confianza != null
+    ? parseFloat(tipado.confianza)
+    : (parseFloat(row.confianza_ia) || 0);
+
+  const resumen  = tipado?.resumen  || row.resumen_ia || "";
+  const acciones = toList(tipado?.acciones).length ? toList(tipado.acciones) : toList(row.acciones_pendientes);
+  const riesgos  = toList(tipado?.riesgos);
+  const plazosIA = toList(tipado?.plazos);
+  const fuentes  = toList(tipado?.rag_docs_usados).length ? toList(tipado.rag_docs_usados) : toList(row.fuentes_rag);
+  const escalar  = tipado ? !!tipado.escalar : false;
+
+  // Nivel de riesgo derivado de señales reales (no existe columna riesgo)
+  const nivelRiesgo = escalar || confianza < 0.5 ? "alto" : confianza < 0.7 ? "medio" : "bajo";
+
+  const historial = [
+    {
+      ts:    row.ingresado_at || row.created_at,
+      actor: "Sistema",
+      tipo:  "sistema",
+      msg:   `Caso ingresado vía ${row.canal || "web"}. Folio ${row.folio || row.id}.`,
+    },
+    ...(tipado ? [{
+      ts:    tipado.procesado_en,
+      actor: `Agente ${tipado.agente}`,
+      tipo:  "ia",
+      msg:   `Análisis tipado completado. Confianza ${Math.round(confianza * 100)}%.${escalar ? " Recomienda escalar." : ""}`,
+    }] : resumen ? [{
+      ts:    row.ultima_accion_at || row.ingresado_at,
+      actor: `Agente ${row.agente_id || "IA"}`,
+      tipo:  "ia",
+      msg:   `Análisis completado. Confianza ${Math.round(confianza * 100)}%.`,
+    }] : []),
+    ...(row.cerrado_at ? [{
+      ts:    row.cerrado_at,
+      actor: "Abogado",
+      tipo:  "abogado",
+      msg:   "Caso cerrado." + (row.leccion_aprendida ? " Lección registrada para el RAG." : ""),
+    }] : []),
+  ];
+
+  return {
+    id:    row.folio || row.id,
+    uuid:  row.id,
+    estado:    row.estado    || "PENDIENTE",
+    prioridad: row.prioridad || "MEDIA",
+    agente:    tipado?.agente || row.agente_id || "A0",
+    canal:     row.canal     || "Web",
+    kit:       row.kit       || "—",
+    area:      tipado?.area_legal || row.area || "Otro",
+    ingreso:             row.ingresado_at || row.created_at,
+    horas_transcurridas: horas,
+    sla_horas:           parseInt(row.sla_horas) || 48,
+    cliente: {
+      nombre:   row.contacto_nombre || "—",
+      empresa:  row.cliente_empresa || "—",
+      rut:      row.cliente_rut     || "—",
+      email:    row.contacto_email  || "—",
+      telefono: row.contacto_tel    || "—",
+    },
+    asunto:       row.asunto || "Sin asunto",
+    consulta_raw: row.consulta_raw || row.asunto || "",
+    analisis: {
+      tipado:         !!tipado,
+      resumen,
+      confianza,
+      criterio:       tipado?.criterio_conf || "",
+      riesgo:         nivelRiesgo,
+      riesgos,
+      acciones,
+      plazos:         plazosIA,
+      escalar,
+      motivo_escalar: tipado?.motivo_escalar || "",
+      fuentes,
+      prompt_version: tipado?.prompt_version || "",
+    },
+    plazo_critico:     row.plazo_critico     || null,
+    plazo_descripcion: row.plazo_descripcion || "",
+    drive_url:         row.drive_url         || null,
+    nota_abogado:      row.nota_abogado      || "",
+    leccion:           row.leccion_aprendida || "",
+    historial,
+  };
+}
+
+// ─── HOOK: CASOS + ANALISIS TIPADO ────────────────────────────────────────────
+function useCasosSupabase() {
+  const [casos,      setCasos]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState(null);
+  const [lastUpdate, setLastUpdate] = useState(null);
+
+  const fetchCasos = useCallback(async () => {
+    try {
+      const { data, error: err } = await supabase
+        .from("casos")
+        .select("*, analisis_agente(*)")
+        .order("ingresado_at", { ascending: false })
+        .limit(200);
+      if (err) throw err;
+      setCasos((data || []).map(mapCaso));
+      setLastUpdate(new Date());
+      setError(null);
+    } catch (e) {
+      console.error(e);
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCasos();
+    const ch = supabase
+      .channel("casos_rt")
+      .on("postgres_changes", { event:"*", schema:"public", table:"casos" }, fetchCasos)
+      .on("postgres_changes", { event:"*", schema:"public", table:"analisis_agente" }, fetchCasos)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [fetchCasos]);
+
+  const actualizarEstado = useCallback(async (uuid, estado) => {
+    const now = new Date().toISOString();
+    const patch = { estado, ultima_accion_at: now };
+    if (estado === "CERRADO") patch.cerrado_at = now;   // verdad de cierre
+    const { error: e } = await supabase
+      .from("casos")
+      .update(patch)
+      .eq("id", uuid);
+    if (!e) setCasos(p => p.map(c => c.uuid === uuid ? { ...c, estado } : c));
+    return e;
+  }, []);
+
+  const actualizarNota = useCallback(async (uuid, nota) => {
+    const { error: e } = await supabase
+      .from("casos")
+      .update({ nota_abogado: nota, ultima_accion_at: new Date().toISOString() })
+      .eq("id", uuid);
+    return e;
+  }, []);
+
+  const actualizarDatos = useCallback(async (uuid, form) => {
+    const { error: e } = await supabase
+      .from("casos")
+      .update({
+        contacto_nombre:  form.nombre,
+        contacto_email:   form.email,
+        contacto_tel:     form.tel,
+        cliente_rut:      form.rut,
+        cliente_empresa:  form.empresa,
+        asunto:           form.asunto,
+        ultima_accion_at: new Date().toISOString(),
+      })
+      .eq("id", uuid);
+    if (!e) setCasos(p => p.map(c => c.uuid === uuid
+      ? { ...c, asunto: form.asunto,
+          cliente: { ...c.cliente, nombre: form.nombre, email: form.email,
+            telefono: form.tel, rut: form.rut, empresa: form.empresa } }
+      : c));
+    return e;
+  }, []);
+
+  const eliminarCaso = useCallback(async (uuid) => {
+    const { error: e } = await supabase.from("casos").delete().eq("id", uuid);
+    if (!e) setCasos(p => p.filter(c => c.uuid !== uuid));
+    return e;
+  }, []);
+
+  const cerrarCaso = useCallback(async (uuid, leccion) => {
+    const { error: e } = await supabase
+      .from("casos")
+      .update({
+        estado:            "CERRADO",
+        leccion_aprendida: leccion,
+        cerrado_at:        new Date().toISOString(),
+        retro_enviado:     false,
+        ultima_accion_at:  new Date().toISOString(),
+      })
+      .eq("id", uuid);
+    if (!e) setCasos(p => p.map(c => c.uuid === uuid ? { ...c, estado:"CERRADO", leccion } : c));
+    return e;
+  }, []);
+
+  return {
+    casos, loading, error, lastUpdate, fetchCasos,
+    actualizarEstado, actualizarNota, actualizarDatos, eliminarCaso, cerrarCaso,
+  };
+}
+
+// ─── HOOK: PLAZOS ─────────────────────────────────────────────────────────────
+function usePlazosSupabase() {
+  const [plazos,  setPlazos]  = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchPlazos = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("plazos_legales")
+        .select("*")
+        .order("fecha_vence", { ascending: true });
+      const hoy = new Date(); hoy.setHours(0,0,0,0);
+      setPlazos((data || []).map(p => {
+        const vence = new Date(p.fecha_vence); vence.setHours(0,0,0,0);
+        const dias  = Math.round((vence - hoy) / 86400000);
+        return {
+          id:         p.id,
+          caso_id:    p.caso_id || null,
+          tipo:       p.tipo    || "General",
+          cliente:    p.asunto?.split("—")[0]?.trim() || "Cliente",
+          asunto:     p.asunto  || "Sin asunto",
+          fecha:      p.fecha_vence,
+          dias,
+          gestionado: p.estado === "cumplido" || p.estado === "gestionado",
+        };
+      }));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPlazos();
+    const ch = supabase
+      .channel("plazos_rt")
+      .on("postgres_changes", { event:"*", schema:"public", table:"plazos_legales" }, fetchPlazos)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [fetchPlazos]);
+
+  const marcarGestionado = useCallback(async (id) => {
+    await supabase.from("plazos_legales").update({ estado:"gestionado" }).eq("id", id);
+    setPlazos(p => p.map(x => x.id === id ? { ...x, gestionado:true } : x));
+  }, []);
+
+  return { plazos, loading, marcarGestionado };
+}
+
+// ─── HOOK: SALUD REAL DE AGENTES ─────────────────────────────────────────────
 // Dos verdades separadas, sin inventar nada:
 //   OPERATIVO → ¿corre? (última ejecución real en analisis_agente.procesado_en)
 //   CALIDAD   → ¿responde bien? (confianza promedio + tasa de escalación)
@@ -154,17 +442,20 @@ function useAgentesStatus() {
         const tasa = m.total > 0 ? m.escalados / m.total : 0;
         const horasRun = m.ultimo ? Math.floor((Date.now() - m.ultimo.getTime()) / 3600000) : null;
 
+        // OPERATIVO: ¿corrió alguna vez? ¿dormido con cola?
         let operativo;
         if (m.ultimo == null)                              operativo = pendientes > 0 ? "sin_correr" : "sin_datos";
         else if (horasRun >= HORAS_DORMIDO && pendientes)  operativo = "dormido";
         else                                               operativo = "vivo";
 
+        // CALIDAD: solo si hay confianza medida
         let salud;
         if (conf == null)                    salud = "sin_datos";
         else if (conf < 0.45 || tasa > 0.30) salud = "critico";
         else if (conf < 0.65)                salud = "atencion";
         else                                 salud = "sano";
 
+        // estado derivado (compatibilidad con sistemaAlerta del root)
         const estado =
           (salud === "critico" || operativo === "dormido" || operativo === "sin_correr") ? "err"
           : salud === "atencion" ? "warn" : "ok";
@@ -194,276 +485,12 @@ function useAgentesStatus() {
   return agentes;
 }
 
-// ─── UTILS ────────────────────────────────────────────────────────────────────
-function timeAgo(ts) {
-  const m = (Date.now() - new Date(ts)) / 60000;
-  if (m < 60)   return `${Math.round(m)}m`;
-  if (m < 1440) return `${Math.round(m/60)}h`;
-  return `${Math.round(m/1440)}d`;
-}
-function fmtDate(ts) {
-  if (!ts) return "-";
-  return new Date(ts).toLocaleDateString("es-CL",{
-    day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit",
-  });
-}
-function horasDesde(ts) {
-  if (!ts) return 0;
-  return Math.floor((Date.now() - new Date(ts).getTime()) / 3600000);
-}
-function slaInfo(sla, h) {
-  const p = h / (sla || 48);
-  if (p >= 1)   return { label:"Vencido", color:DS.red,   pct:100 };
-  if (p >= 0.7) return { label:"Urgente", color:DS.amber, pct:Math.round(p*100) };
-  return               { label:"En plazo", color:DS.green, pct:Math.round(p*100) };
-}
-function saludo() {
-  const h = new Date().getHours();
-  if (h < 12) return "Buenos días";
-  if (h < 19) return "Buenas tardes";
-  return "Buenas noches";
-}
-
-// ─── MAPEADOR SUPABASE → MODELO INTERNO ──────────────────────────────────────
-// Convierte una fila cruda de Supabase al modelo que usa el dashboard.
-// Todo el v3 trabaja con este modelo normalizado.
-function mapCaso(row) {
-  const parseJsonb = (v) => {
-    if (!v) return [];
-    if (typeof v === "string") { try { return JSON.parse(v); } catch { return []; } }
-    return Array.isArray(v) ? v : [];
-  };
-  const horas = horasDesde(row.ingresado_at || row.created_at);
-  const confianza = parseFloat(row.confianza_ia) || 0;
-  const acciones  = parseJsonb(row.acciones_pendientes);
-  const fuentesRAG = parseJsonb(row.fuentes_rag);
-  // Construir historial mínimo desde campos de Supabase
-  const historial = [
-    {
-      ts:    row.ingresado_at || row.created_at,
-      actor: "Sistema",
-      tipo:  "sistema",
-      msg:   `Caso ingresado vía ${row.canal || "web"}. Folio ${row.folio || row.id}.`,
-    },
-    ...(row.resumen_ia ? [{
-      ts:    row.ultima_accion_at || row.ingresado_at,
-      actor: `Agente ${row.agente_id || "IA"}`,
-      tipo:  "ia",
-      msg:   `Análisis completado. Confianza ${Math.round(confianza * 100)}%.`,
-    }] : []),
-  ];
-
-  return {
-    // Identificadores
-    id:   row.folio || row.id,
-    uuid: row.id,
-    folio:(row.folio || "").split("-").pop() || "0000",
-    // Estado operativo
-    estado:    row.estado   || "PENDIENTE",
-    prioridad: row.prioridad|| "MEDIA",
-    agente:    row.agente_id|| "A0",
-    canal:     row.canal    || "Web",
-    kit:       row.kit      || "Arranque",
-    area:      row.area     || "Otro",
-    // Tiempos
-    ingreso:            row.ingresado_at || row.created_at,
-    horas_transcurridas:horas,
-    sla_horas:          parseInt(row.sla_horas) || 48,
-    // Cliente — modelo unificado compatible con v3
-    cliente: {
-      nombre:   row.contacto_nombre   || "-",
-      empresa:  row.cliente_empresa   || "-",
-      rut:      row.cliente_rut       || "-",
-      email:    row.contacto_email    || "-",
-      telefono: row.contacto_tel      || "-",
-      tipo:     row.tipo_empresa      || "-",
-    },
-    asunto: row.asunto || "Sin asunto",
-    // Análisis IA — modelo compatible con v3
-    analisis: {
-      resumen:           row.resumen_ia          || "",
-      confianza,
-      riesgo:            row.riesgo              || "medio",
-      criterio_confianza:row.criterio_confianza  || "",
-      acciones,
-      plazos:            parseJsonb(row.plazos_detectados),
-      escalar:           !!row.escalar,
-      motivo_escalar:    row.motivo_escalar       || null,
-      fuentes_rag:       fuentesRAG,
-      prompt_version:    row.prompt_version       || "v1.x",
-    },
-    // Campos adicionales
-    plazo_critico:    row.plazo_critico    || null,
-    drive_url:        row.drive_url        || null,
-    nota_abogado:     row.nota_abogado     || "",
-    leccion:          row.leccion_aprendida|| "",
-    modelo_usado:     row.modelo_usado     || "",
-    borrador_aprobado:row.borrador_aprobado|| false,
-    historial,
-    _raw: row,
-  };
-}
-
-// ─── HOOK SUPABASE ─────────────────────────────────────────────────────────────
-function useCasosSupabase() {
-  const [casos,      setCasos]      = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState(null);
-  const [lastUpdate, setLastUpdate] = useState(null);
-
-  const fetchCasos = useCallback(async () => {
-    try {
-      const { data, error: err } = await supabase
-        .from("casos")
-        .select("*")
-        .order("ingresado_at", { ascending: false })
-        .limit(200);
-      if (err) throw err;
-      setCasos((data || []).map(mapCaso));
-      setLastUpdate(new Date());
-      setError(null);
-    } catch (e) {
-      console.error(e);
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchCasos();
-    const ch = supabase
-      .channel("casos_rt")
-      .on("postgres_changes", { event:"*", schema:"public", table:"casos" }, fetchCasos)
-      .subscribe();
-    return () => supabase.removeChannel(ch);
-  }, [fetchCasos]);
-
-  const actualizarEstado = useCallback(async (uuid, estado) => {
-    const now = new Date().toISOString();
-    const patch = { estado, ultima_accion_at: now };
-    if (estado === "CERRADO") patch.cerrado_at = now;   // verdad de cierre
-    const { error: e } = await supabase
-      .from("casos")
-      .update(patch)
-      .eq("id", uuid);
-    if (!e) setCasos(p => p.map(c => c.uuid === uuid ? { ...c, estado } : c));
-    return e;
-  }, []);
-
-  const actualizarNota = useCallback(async (uuid, nota) => {
-    const { error: e } = await supabase
-      .from("casos")
-      .update({ nota_abogado: nota, ultima_accion_at: new Date().toISOString() })
-      .eq("id", uuid);
-    return e;
-  }, []);
-
-  const actualizarDatos = useCallback(async (uuid, form) => {
-    const { error: e } = await supabase
-      .from("casos")
-      .update({
-        contacto_nombre: form.nombre,
-        contacto_email:  form.email,
-        contacto_tel:    form.tel,
-        cliente_rut:     form.rut,
-        cliente_empresa: form.empresa,
-        asunto:          form.asunto,
-        ultima_accion_at: new Date().toISOString(),
-      })
-      .eq("id", uuid);
-    if (!e) setCasos(p => p.map(c => c.uuid === uuid
-      ? { ...c, asunto: form.asunto,
-          cliente: { ...c.cliente, nombre: form.nombre, email: form.email,
-            tel: form.tel, rut: form.rut, empresa: form.empresa } }
-      : c));
-    return e;
-  }, []);
-
-  const eliminarCaso = useCallback(async (uuid) => {
-    const { error: e } = await supabase.from("casos").delete().eq("id", uuid);
-    if (!e) setCasos(p => p.filter(c => c.uuid !== uuid));
-    return e;
-  }, []);
-
-  const cerrarCaso = useCallback(async (uuid, leccion) => {
-    const { error: e } = await supabase
-      .from("casos")
-      .update({
-        estado: "CERRADO",
-        leccion_aprendida:   leccion,
-        cerrado_at:          new Date().toISOString(),
-        retro_enviado:       false,
-        ultima_accion_at:    new Date().toISOString(),
-      })
-      .eq("id", uuid);
-    if (!e) setCasos(p => p.map(c => c.uuid === uuid ? { ...c, estado:"CERRADO", leccion } : c));
-    return e;
-  }, []);
-
-  return {
-    casos, loading, error, lastUpdate, fetchCasos,
-    actualizarEstado, actualizarNota, actualizarDatos, eliminarCaso, cerrarCaso,
-  };
-}
-
-// ─── HOOK PLAZOS SUPABASE ─────────────────────────────────────────────────────
-function usePlazosSupabase() {
-  const [plazos,  setPlazos]  = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchPlazos = useCallback(async () => {
-    try {
-      const { data } = await supabase
-        .from("plazos_legales")
-        .select("*")
-        .order("fecha_vence", { ascending: true });
-      const hoy = new Date(); hoy.setHours(0,0,0,0);
-      setPlazos((data || []).map(p => {
-        const vence = new Date(p.fecha_vence); vence.setHours(0,0,0,0);
-        const dias  = Math.round((vence - hoy) / 86400000);
-        return {
-          id:          p.id,
-          caso_id:     p.caso_id || null,
-          tipo:        p.tipo    || "General",
-          cliente:     p.asunto?.split("—")[0]?.trim() || "Cliente",
-          asunto:      p.asunto  || "Sin asunto",
-          fecha:       p.fecha_vence,
-          dias,
-          urgencia:    dias<=3?"critica":dias<=7?"alta":dias<=15?"media":"baja",
-          gestionado:  p.estado==="cumplido"||p.estado==="gestionado",
-        };
-      }));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPlazos();
-    const ch = supabase
-      .channel("plazos_rt")
-      .on("postgres_changes", { event:"*", schema:"public", table:"plazos_legales" }, fetchPlazos)
-      .subscribe();
-    return () => supabase.removeChannel(ch);
-  }, [fetchPlazos]);
-
-  const marcarGestionado = useCallback(async (id) => {
-    await supabase.from("plazos_legales").update({ estado:"gestionado" }).eq("id", id);
-    setPlazos(p => p.map(x => x.id === id ? { ...x, gestionado:true } : x));
-  }, []);
-
-  return { plazos, loading, fetchPlazos, marcarGestionado };
-}
-
-// ─── INTELIGENCIA ANTICIPATORIA ───────────────────────────────────────────────
-// El sistema sugiere — el abogado decide. Nunca impone.
+// ─── SUGERENCIA DEL SISTEMA ───────────────────────────────────────────────────
+// El sistema sugiere. El abogado decide. Siempre.
 function accionSugerida(caso) {
   const c = caso.analisis.confianza;
-  if (caso.analisis.escalar || c < 0.5)
-    return { accion:"escalar", motivo:"Confianza baja o escalamiento marcado por el agente" };
+  if (caso.analisis.escalar || (c > 0 && c < 0.5))
+    return { accion:"escalar", motivo: caso.analisis.motivo_escalar || "Confianza baja" };
   if (c >= 0.85 && caso.analisis.riesgo !== "alto")
     return { accion:"aprobar", motivo:"Alta confianza y riesgo controlado" };
   return null;
@@ -523,17 +550,6 @@ function SectionLabel({ children, icon }) {
       {icon && <span style={{ fontSize:12, color:DS.slateL }}>{icon}</span>}
       <span style={{ fontFamily:DS.sans, fontSize:9, fontWeight:700, color:DS.slateL,
         textTransform:"uppercase", letterSpacing:"0.13em" }}>{children}</span>
-    </div>
-  );
-}
-
-function InfoTile({ label, val, color, sub }) {
-  return (
-    <div style={{ background:DS.bg, border:`1px solid ${DS.border}`, borderRadius:8, padding:"12px 14px" }}>
-      <div style={{ fontFamily:DS.sans, fontSize:9, color:DS.slateL, textTransform:"uppercase",
-        letterSpacing:"0.1em", marginBottom:4 }}>{label}</div>
-      <div style={{ fontFamily:DS.serif, fontSize:24, fontWeight:700, color, marginBottom:4 }}>{val}</div>
-      {sub && <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, lineHeight:1.45 }}>{sub}</div>}
     </div>
   );
 }
@@ -618,19 +634,17 @@ function CommandPalette({ open, onClose, casos, setNav, selectCaso }) {
   }, [open]);
 
   const navItems = [
-    { tipo:"nav", id:"home",     label:"Ir a Centro de Mando", icon:"⌂" },
-    { tipo:"nav", id:"hitl",     label:"Ir a Cola HITL",       icon:"◎" },
-    { tipo:"nav", id:"casos",    label:"Ir a Casos",           icon:"☰" },
-    { tipo:"nav", id:"plazos",   label:"Ir a Agenda Legal",    icon:"◷" },
-    { tipo:"nav", id:"clientes", label:"Ir a Clientes",        icon:"◈" },
-    { tipo:"nav", id:"metricas", label:"Ir a Métricas",        icon:"↗" },
-    { tipo:"nav", id:"sistema",  label:"Ir a Sistema IA",      icon:"⚙" },
-    { tipo:"nav", id:"rag",      label:"Ir a RAG / Fuentes",   icon:"◻" },
+    { tipo:"nav", id:"hoy",     label:"Ir a Hoy",     icon:"⌂" },
+    { tipo:"nav", id:"revisar", label:"Ir a Revisar", icon:"◎" },
+    { tipo:"nav", id:"casos",   label:"Ir a Casos",   icon:"☰" },
+    { tipo:"nav", id:"agenda",  label:"Ir a Agenda",  icon:"◷" },
+    { tipo:"nav", id:"sistema", label:"Ir a Sistema", icon:"⚙" },
+    { tipo:"nav", id:"clientes",label:"Ir a Clientes",icon:"◈" },
   ];
 
   const results = useMemo(() => {
     const query = q.toLowerCase().trim();
-    if (!query) return navItems.slice(0, 5);
+    if (!query) return navItems;
     const navs = navItems.filter(n => n.label.toLowerCase().includes(query));
     const cs = casos
       .filter(c =>
@@ -640,7 +654,7 @@ function CommandPalette({ open, onClose, casos, setNav, selectCaso }) {
         c.analisis.resumen.toLowerCase().includes(query) ||
         c.cliente.nombre.toLowerCase().includes(query)
       )
-      .slice(0, 5)
+      .slice(0, 6)
       .map(c => ({
         tipo:"caso", caso:c,
         label:`${c.cliente.empresa} — ${c.asunto.slice(0,50)}`,
@@ -676,7 +690,7 @@ function CommandPalette({ open, onClose, casos, setNav, selectCaso }) {
           borderBottom:`1px solid ${DS.border}` }}>
           <span style={{ fontSize:15, color:DS.slateL }}>⌕</span>
           <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
-            onKeyDown={handleKey} placeholder="Buscar casos, clientes o navegar…"
+            onKeyDown={handleKey} placeholder="Buscar caso, empresa o sección…"
             style={{ flex:1, border:"none", outline:"none", background:"transparent",
               fontFamily:DS.sans, fontSize:15, color:DS.ink }}/>
           <Kbd>esc</Kbd>
@@ -708,27 +722,16 @@ function CommandPalette({ open, onClose, casos, setNav, selectCaso }) {
             </div>
           ))}
         </div>
-        <div style={{ padding:"9px 18px", borderTop:`1px solid ${DS.border}`, background:DS.bg,
-          display:"flex", gap:14, alignItems:"center" }}>
-          <span style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL,
-            display:"flex", alignItems:"center", gap:5 }}>
-            <Kbd>↑</Kbd><Kbd>↓</Kbd> navegar
-          </span>
-          <span style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL,
-            display:"flex", alignItems:"center", gap:5 }}>
-            <Kbd>↵</Kbd> abrir
-          </span>
-        </div>
       </div>
     </div>
   );
 }
 
-// ─── MODAL NUEVO CASO ─────────────────────────────────────────────────────────
+// ─── MODAL: NUEVO CASO ────────────────────────────────────────────────────────
 function ModalNuevoCaso({ onSave, onClose }) {
   const [form, setForm] = useState({
-    nombre:"", empresa:"", rut_persona:"", rut_empresa:"", email:"", telefono:"",
-    tipo:"SpA", area:"Laboral", urgencia:"normal", consulta:"", kit:"Arranque",
+    nombre:"", empresa:"", rut_empresa:"", email:"", telefono:"",
+    area:"Laboral", urgencia:"normal", consulta:"", kit:"Arranque",
   });
   const [step,   setStep]   = useState(1);
   const [saving, setSaving] = useState(false);
@@ -758,30 +761,11 @@ function ModalNuevoCaso({ onSave, onClose }) {
           <div>
             <div style={{ fontFamily:DS.serif, fontSize:20, fontWeight:700, color:DS.ink }}>Nuevo caso</div>
             <div style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL, marginTop:2 }}>
-              Paso {step} de 2 — {step===1 ? "Datos del cliente" : "Consulta y configuración"}
+              Paso {step} de 2 — {step===1 ? "Cliente" : "Consulta"}
             </div>
           </div>
           <button onClick={onClose} style={{ border:"none", background:"transparent",
             cursor:"pointer", fontSize:18, color:DS.slateL, padding:4 }}>✕</button>
-        </div>
-        {/* Barra de progreso */}
-        <div style={{ padding:"12px 24px", background:DS.bg, borderBottom:`1px solid ${DS.border}`,
-          display:"flex", gap:8, alignItems:"center" }}>
-          {[1,2].map(s => (
-            <div key={s} style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <div style={{ width:26, height:26, borderRadius:"50%",
-                background: s<=step ? DS.gold : DS.border,
-                display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <span style={{ fontFamily:DS.sans, fontSize:11, fontWeight:700,
-                  color: s<=step ? "#fff" : DS.slateL }}>{s}</span>
-              </div>
-              <span style={{ fontFamily:DS.sans, fontSize:11,
-                color: s<=step ? DS.ink : DS.slateL, fontWeight: s===step ? 600 : 400 }}>
-                {s===1 ? "Cliente" : "Consulta"}
-              </span>
-              {s<2 && <div style={{ width:32, height:1, background: step>s ? DS.gold : DS.border }}/>}
-            </div>
-          ))}
         </div>
         <div style={{ padding:"20px 24px" }}>
           {step === 1 ? (
@@ -789,12 +773,10 @@ function ModalNuevoCaso({ onSave, onClose }) {
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                 <div><label style={lbl}>Nombre contacto *</label>
                   <input value={form.nombre} onChange={e=>upd("nombre",e.target.value)} style={inp}
-                    placeholder="Carolina Pérez"
                     onFocus={e=>e.target.style.borderColor=DS.gold}
                     onBlur={e=>e.target.style.borderColor=DS.border}/></div>
                 <div><label style={lbl}>Empresa *</label>
                   <input value={form.empresa} onChange={e=>upd("empresa",e.target.value)} style={inp}
-                    placeholder="Limpiezas CP SpA"
                     onFocus={e=>e.target.style.borderColor=DS.gold}
                     onBlur={e=>e.target.style.borderColor=DS.border}/></div>
               </div>
@@ -804,24 +786,17 @@ function ModalNuevoCaso({ onSave, onClose }) {
                     placeholder="76.444.321-5"
                     onFocus={e=>e.target.style.borderColor=DS.gold}
                     onBlur={e=>e.target.style.borderColor=DS.border}/></div>
-                <div><label style={lbl}>Tipo empresa</label>
-                  <select value={form.tipo} onChange={e=>upd("tipo",e.target.value)}
-                    style={{ ...inp, cursor:"pointer" }}>
-                    {["SpA","Ltda","EIRL","SA","SRL","Persona natural"].map(t=><option key={t}>{t}</option>)}
-                  </select></div>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                <div><label style={lbl}>Email *</label>
-                  <input type="email" value={form.email} onChange={e=>upd("email",e.target.value)} style={inp}
-                    placeholder="contacto@empresa.cl"
-                    onFocus={e=>e.target.style.borderColor=DS.gold}
-                    onBlur={e=>e.target.style.borderColor=DS.border}/></div>
-                <div><label style={lbl}>Teléfono / WhatsApp</label>
+                <div><label style={lbl}>Teléfono</label>
                   <input value={form.telefono} onChange={e=>upd("telefono",e.target.value)} style={inp}
                     placeholder="+56 9 XXXX XXXX"
                     onFocus={e=>e.target.style.borderColor=DS.gold}
                     onBlur={e=>e.target.style.borderColor=DS.border}/></div>
               </div>
+              <div><label style={lbl}>Email *</label>
+                <input type="email" value={form.email} onChange={e=>upd("email",e.target.value)} style={inp}
+                  placeholder="contacto@empresa.cl"
+                  onFocus={e=>e.target.style.borderColor=DS.gold}
+                  onBlur={e=>e.target.style.borderColor=DS.border}/></div>
             </div>
           ) : (
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
@@ -839,14 +814,14 @@ function ModalNuevoCaso({ onSave, onClose }) {
                     <option value="urgente">Urgente — hay plazo legal</option>
                   </select></div>
               </div>
-              <div><label style={lbl}>Kit de servicio</label>
+              <div><label style={lbl}>Kit</label>
                 <select value={form.kit} onChange={e=>upd("kit",e.target.value)}
                   style={{ ...inp, cursor:"pointer" }}>
                   {["Arranque","Compliance","Premium","Retainer"].map(k=><option key={k}>{k}</option>)}
                 </select></div>
               <div><label style={lbl}>Descripción de la consulta *</label>
                 <textarea value={form.consulta} onChange={e=>upd("consulta",e.target.value)}
-                  placeholder="Describe la situación con detalle: qué ocurrió, con quién, desde cuándo, qué documentos existen, qué quiere resolver el cliente…"
+                  placeholder="Situación, fechas relevantes, partes involucradas, qué quiere resolver el cliente…"
                   style={{ ...inp, minHeight:120, resize:"vertical", lineHeight:1.6 }}
                   onFocus={e=>e.target.style.borderColor=DS.gold}
                   onBlur={e=>e.target.style.borderColor=DS.border}/></div>
@@ -889,7 +864,7 @@ function ModalNuevoCaso({ onSave, onClose }) {
   );
 }
 
-// ─── MODAL EDITAR ─────────────────────────────────────────────────────────────
+// ─── MODAL: EDITAR ────────────────────────────────────────────────────────────
 function ModalEditar({ caso, onSave, onClose }) {
   const [form, setForm] = useState({
     nombre:  caso.cliente.nombre,
@@ -919,7 +894,7 @@ function ModalEditar({ caso, onSave, onClose }) {
         overflow:"auto", boxShadow:"0 20px 60px rgba(0,0,0,.3)", animation:"cmdIn .15s ease" }}>
         <div style={{ padding:"20px 24px", borderBottom:`1px solid ${DS.border}`,
           display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <span style={{ fontFamily:DS.serif, fontSize:18, fontWeight:700, color:DS.ink }}>Editar datos del caso</span>
+          <span style={{ fontFamily:DS.serif, fontSize:18, fontWeight:700, color:DS.ink }}>Editar caso</span>
           <button onClick={onClose} style={{ border:"none", background:"transparent",
             cursor:"pointer", fontSize:20, color:DS.slateL }}>×</button>
         </div>
@@ -943,7 +918,7 @@ function ModalEditar({ caso, onSave, onClose }) {
             disabled={saving}
             style={{ padding:"9px 18px", borderRadius:7, border:"none", background:DS.ink,
               cursor:"pointer", fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.gold }}>
-            {saving ? "Guardando…" : "Guardar en Supabase"}
+            {saving ? "Guardando…" : "Guardar"}
           </button>
         </div>
       </div>
@@ -951,7 +926,7 @@ function ModalEditar({ caso, onSave, onClose }) {
   );
 }
 
-// ─── MODAL ELIMINAR ───────────────────────────────────────────────────────────
+// ─── MODAL: ELIMINAR ──────────────────────────────────────────────────────────
 function ModalEliminar({ caso, onConfirm, onClose }) {
   const [confirm, setConfirm] = useState("");
   const [saving,  setSaving]  = useState(false);
@@ -972,8 +947,8 @@ function ModalEliminar({ caso, onConfirm, onClose }) {
         </div>
         <div style={{ padding:"20px 24px" }}>
           <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slate, margin:"0 0 16px", lineHeight:1.6 }}>
-            Esta acción es <strong>irreversible</strong>. El caso <strong>{caso.id}</strong> de{" "}
-            <strong>{caso.cliente.empresa}</strong> será eliminado permanentemente de Supabase.
+            Acción <strong>irreversible</strong>. El caso <strong>{caso.id}</strong> de{" "}
+            <strong>{caso.cliente.empresa}</strong> se elimina permanentemente.
           </p>
           <label style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL,
             display:"block", marginBottom:6 }}>Escribe el folio para confirmar:</label>
@@ -994,7 +969,7 @@ function ModalEliminar({ caso, onConfirm, onClose }) {
               background: confirm===caso.id ? DS.red : DS.border,
               cursor: confirm===caso.id ? "pointer" : "not-allowed",
               fontFamily:DS.sans, fontSize:13, fontWeight:700, color:"#fff" }}>
-            {saving ? "Eliminando…" : "Eliminar definitivamente"}
+            {saving ? "Eliminando…" : "Eliminar"}
           </button>
         </div>
       </div>
@@ -1002,25 +977,21 @@ function ModalEliminar({ caso, onConfirm, onClose }) {
   );
 }
 
-// ─── SIDEBAR ──────────────────────────────────────────────────────────────────
-function Sidebar({ nav, setNav, hitlCount, plazosCount, agentesErr, collapsed, setCollapsed, onCmd, lastUpdate }) {
+// ─── SIDEBAR — 5 SECCIONES ────────────────────────────────────────────────────
+function Sidebar({ nav, setNav, revisarCount, agendaCount, sistemaAlerta, collapsed, setCollapsed, onCmd, lastUpdate }) {
+  const { signOut } = useClerk();
   const items = [
-    { id:"home",     icon:"⌂",  label:"Centro de Mando",  kbd:"1" },
-    { id:"hitl",     icon:"◎",  label:"Cola HITL",        kbd:"2", badge:hitlCount,   badgeColor:DS.amber },
-    { id:"casos",    icon:"☰",  label:"Casos",            kbd:"3" },
-    { id:"plazos",   icon:"◷",  label:"Agenda Legal",     kbd:"4", badge:plazosCount, badgeColor:DS.red },
-    { id:"clientes", icon:"◈",  label:"Clientes",         kbd:"5" },
-    { id:"metricas", icon:"↗",  label:"Métricas",         kbd:"6" },
-    { id:"sistema",  icon:"⚙",  label:"Sistema IA",       kbd:"7", dot: agentesErr>0 ? DS.red : null },
-    { id:"rag",      icon:"◻",  label:"RAG / Fuentes",    kbd:"8" },
-    { id:"config",   icon:"◧",  label:"Configuración" },
+    { id:"hoy",     icon:"⌂", label:"Hoy",     kbd:"1" },
+    { id:"revisar", icon:"◎", label:"Revisar", kbd:"2", badge:revisarCount, badgeColor:DS.amber },
+    { id:"casos",   icon:"☰", label:"Casos",   kbd:"3" },
+    { id:"agenda",  icon:"◷", label:"Agenda",  kbd:"4", badge:agendaCount, badgeColor:DS.red },
+    { id:"sistema", icon:"⚙", label:"Sistema", kbd:"5", dot: sistemaAlerta ? DS.red : null },
   ];
 
   return (
-    <div style={{ width: collapsed ? 56 : 224, background:DS.bgSide, display:"flex",
+    <div style={{ width: collapsed ? 56 : 216, background:DS.bgSide, display:"flex",
       flexDirection:"column", flexShrink:0, height:"100vh",
       transition:"width .2s ease", overflow:"hidden" }}>
-      {/* Logo */}
       <div style={{ padding: collapsed?"20px 10px 16px":"20px 18px 16px",
         borderBottom:"1px solid rgba(255,255,255,0.07)",
         display:"flex", alignItems:"center", justifyContent: collapsed ? "center" : "space-between" }}>
@@ -1055,7 +1026,6 @@ function Sidebar({ nav, setNav, hitlCount, plazosCount, agentesErr, collapsed, s
             cursor:"pointer", borderRadius:5, padding:"4px 8px",
             color:"rgba(255,255,255,0.4)", fontSize:12 }}>›</button>
       )}
-      {/* ⌘K */}
       {!collapsed && (
         <button onClick={onCmd}
           style={{ margin:"12px 16px 4px", display:"flex", alignItems:"center", gap:8,
@@ -1071,14 +1041,13 @@ function Sidebar({ nav, setNav, hitlCount, plazosCount, agentesErr, collapsed, s
             background:"rgba(255,255,255,0.07)", padding:"2px 5px", borderRadius:3 }}>⌘K</span>
         </button>
       )}
-      {/* Nav items */}
       <div style={{ flex:1, paddingTop:6, overflowY:"auto" }}>
         {items.map(it => {
           const active = nav === it.id;
           return (
             <button key={it.id} onClick={()=>setNav(it.id)} title={collapsed ? it.label : undefined}
               style={{ display:"flex", alignItems:"center", gap:10, width:"100%",
-                padding: collapsed ? "11px 0" : "10px 18px",
+                padding: collapsed ? "12px 0" : "11px 18px",
                 justifyContent: collapsed ? "center" : "flex-start",
                 background: active ? "rgba(184,148,58,0.13)" : "transparent",
                 border:"none", borderLeft:`2px solid ${active ? DS.gold : "transparent"}`,
@@ -1105,8 +1074,23 @@ function Sidebar({ nav, setNav, hitlCount, plazosCount, agentesErr, collapsed, s
             </button>
           );
         })}
+        {!collapsed && <div style={{ height:1, background:"rgba(255,255,255,0.06)", margin:"8px 18px" }}/>}
+        <button onClick={()=>setNav("clientes")} title={collapsed ? "Clientes" : undefined}
+          style={{ display:"flex", alignItems:"center", gap:10, width:"100%",
+            padding: collapsed ? "12px 0" : "11px 18px",
+            justifyContent: collapsed ? "center" : "flex-start",
+            background: nav==="clientes" ? "rgba(184,148,58,0.13)" : "transparent",
+            border:"none", borderLeft:`2px solid ${nav==="clientes" ? DS.gold : "transparent"}`,
+            cursor:"pointer", transition:"all .12s" }}
+          onMouseEnter={e=>{ if(nav!=="clientes") e.currentTarget.style.background="rgba(255,255,255,0.05)"; }}
+          onMouseLeave={e=>{ if(nav!=="clientes") e.currentTarget.style.background="transparent"; }}>
+          <span style={{ fontSize:15, color: nav==="clientes" ? DS.gold : "rgba(255,255,255,0.4)", flexShrink:0 }}>◈</span>
+          {!collapsed && (
+            <span style={{ fontFamily:DS.sans, fontSize:13, fontWeight: nav==="clientes" ? 600 : 400,
+              color: nav==="clientes" ? DS.gold : "rgba(255,255,255,0.6)", flex:1, textAlign:"left" }}>Clientes</span>
+          )}
+        </button>
       </div>
-      {/* Realtime status */}
       {!collapsed && (
         <div style={{ padding:"10px 18px", borderTop:"1px solid rgba(255,255,255,0.06)" }}>
           <div style={{ display:"flex", alignItems:"center", gap:7 }}>
@@ -1119,38 +1103,40 @@ function Sidebar({ nav, setNav, hitlCount, plazosCount, agentesErr, collapsed, s
           </div>
         </div>
       )}
-      {/* Usuario */}
       <div style={{ padding: collapsed ? "12px 0" : "12px 18px",
         borderTop:"1px solid rgba(255,255,255,0.06)",
-        display:"flex", alignItems:"center", gap:10, justifyContent: collapsed ? "center" : "flex-start" }}>
+        display:"flex", flexDirection: collapsed ? "column" : "row",
+        alignItems:"center", gap:10, justifyContent:"flex-start" }}>
         <div style={{ width:30, height:30, borderRadius:"50%", background:"rgba(184,148,58,0.15)",
           border:`1px solid ${DS.goldDim}`, display:"flex", alignItems:"center",
           justifyContent:"center", flexShrink:0 }}>
           <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:800, color:DS.gold }}>KL</span>
         </div>
         {!collapsed && (
-          <div>
+          <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontFamily:DS.sans, fontSize:12, fontWeight:600, color:"rgba(255,255,255,0.75)" }}>Kurt Leupin</div>
             <div style={{ fontFamily:DS.sans, fontSize:9, color:"rgba(255,255,255,0.3)" }}>Abogado · Admin</div>
           </div>
         )}
+        <button onClick={()=>signOut()} title="Cerrar sesión"
+          style={{ border:"none", background:"rgba(255,255,255,0.06)", cursor:"pointer",
+            borderRadius:6, padding:"6px 8px", color:"rgba(255,255,255,0.45)", fontSize:13,
+            flexShrink:0, transition:"all .12s" }}
+          onMouseEnter={e=>{ e.currentTarget.style.background="rgba(139,30,30,0.45)"; e.currentTarget.style.color="#fff"; }}
+          onMouseLeave={e=>{ e.currentTarget.style.background="rgba(255,255,255,0.06)"; e.currentTarget.style.color="rgba(255,255,255,0.45)"; }}>⏻</button>
       </div>
     </div>
   );
 }
 
 // ─── TOPBAR ───────────────────────────────────────────────────────────────────
-function TopBar({ nav, casos, onNuevoCaso, sesion, onRefresh }) {
+function TopBar({ nav, sesion, onNuevoCaso, onRefresh }) {
+  const [sync, setSync] = useState(false);
   const titles = {
-    home:"Centro de Mando", hitl:"Cola HITL — Revisión pendiente",
-    casos:"Gestión de Casos", plazos:"Agenda Legal", clientes:"Clientes",
-    metricas:"Métricas del sistema", sistema:"Sistema IA",
-    rag:"RAG / Fuentes", config:"Configuración",
+    hoy:"Hoy", revisar:"Revisar — Cola de decisión", casos:"Casos",
+    agenda:"Agenda Legal", sistema:"Sistema",
   };
-  const activos    = casos.filter(c=>c.estado!=="CERRADO").length;
-  const hitl       = casos.filter(c=>c.estado==="HITL").length;
-  const slaVencidos= casos.filter(c=>c.estado!=="CERRADO"&&slaInfo(c.sla_horas,c.horas_transcurridas).label==="Vencido").length;
-  const revisadosHoy = sesion.aprobados + sesion.escalados + sesion.rechazados;
+  const revisados = sesion.aprobados + sesion.escalados + sesion.rechazados;
 
   return (
     <div style={{ height:52, background:DS.bgCard, borderBottom:`1px solid ${DS.border}`,
@@ -1160,33 +1146,24 @@ function TopBar({ nav, casos, onNuevoCaso, sesion, onRefresh }) {
         <span style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.slate }}>
           {titles[nav] || "Panel PER"}
         </span>
-        {revisadosHoy > 0 && (
+        {revisados > 0 && (
           <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL,
             background:DS.bg, padding:"4px 10px", borderRadius:12 }}>
-            Hoy: {revisadosHoy} revisado{revisadosHoy!==1?"s":""}
+            Sesión: {revisados} revisado{revisados!==1?"s":""}
           </span>
         )}
       </div>
-      <div style={{ display:"flex", alignItems:"center", gap:20 }}>
-        {[
-          { label:"Activos",  val:activos,     color:DS.blue },
-          { label:"HITL",     val:hitl,        color:DS.amber },
-          { label:"SLA venc", val:slaVencidos, color:slaVencidos>0?DS.red:DS.slateXL },
-        ].map(({ label, val, color }) => (
-          <div key={label} style={{ textAlign:"center" }}>
-            <div style={{ fontFamily:DS.serif, fontSize:18, fontWeight:700, color, lineHeight:1 }}>{val}</div>
-            <div style={{ fontFamily:DS.sans, fontSize:8, color:DS.slateL,
-              letterSpacing:"0.1em", textTransform:"uppercase" }}>{label}</div>
-          </div>
-        ))}
-        {onRefresh && (
-          <button onClick={onRefresh}
-            style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 10px",
-              background:DS.greenL, borderRadius:6, border:"none", cursor:"pointer" }}>
-            <span style={{ fontSize:12, color:DS.green }}>↻</span>
-            <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:600, color:DS.green }}>Sincronizar</span>
-          </button>
-        )}
+      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+        <button onClick={async()=>{ if(sync) return; setSync(true); try { await onRefresh(); } finally { setTimeout(()=>setSync(false), 500); } }}
+          style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 11px",
+            background:"transparent", borderRadius:6, border:`1px solid ${DS.border}`,
+            cursor:"pointer", transition:"all .12s" }}
+          onMouseEnter={e=>{ e.currentTarget.style.borderColor=DS.green; }}
+          onMouseLeave={e=>{ e.currentTarget.style.borderColor=DS.border; }}>
+          <span style={{ fontSize:12, color:DS.green, display:"inline-block",
+            animation: sync ? "spin 0.8s linear infinite" : "none" }}>↻</span>
+          <span style={{ fontFamily:DS.sans, fontSize:11, fontWeight:600, color:DS.slate }}>{sync ? "Sincronizando…" : "Sincronizar"}</span>
+        </button>
         <button onClick={onNuevoCaso}
           style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 14px", borderRadius:7,
             border:`1px solid ${DS.goldLine}`, background:DS.goldFaint, cursor:"pointer",
@@ -1255,7 +1232,7 @@ function CasoRow({ caso, selected, onClick, saliendo }) {
             padding:"3px 8px", borderRadius:4 }}>
             <span style={{ fontFamily:DS.sans, fontSize:9, fontWeight:700,
               color: sug.accion==="aprobar" ? DS.green : DS.red }}>
-              ✦ {sug.accion==="aprobar" ? "aprobar" : "escalar"}
+              ✦ {sug.accion}
             </span>
           </div>
         )}
@@ -1269,7 +1246,6 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
   const [tab,      setTab]      = useState("analisis");
   const [nota,     setNota]     = useState(caso.nota_abogado||"");
   const [leccion,  setLeccion]  = useState(caso.leccion||"");
-  const [tipoDoc,  setTipoDoc]  = useState(TIPOS_DOC[0]);
   const [procesando,  setProc]  = useState(false);
   const [guardandoNota, setGN]  = useState(false);
 
@@ -1283,15 +1259,14 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
   const ac      = AREA_COLOR[caso.area]   || DS.slate;
   const cerrado = caso.estado === "CERRADO";
   const tieneAnalisis = caso.analisis.resumen && caso.analisis.resumen.length > 10;
-  const rCfg    = RIESGO_CFG[caso.analisis.riesgo] || RIESGO_CFG.medio;
+  const rColor  = caso.analisis.riesgo==="alto"?DS.red:caso.analisis.riesgo==="medio"?DS.amber:DS.green;
   const sug     = !cerrado ? accionSugerida(caso) : null;
 
   const TABS = [
-    { id:"analisis", label:"Análisis IA" },
+    { id:"analisis", label:"Análisis" },
     { id:"consulta", label:"Consulta" },
     { id:"historial",label:"Historial" },
-    { id:"generar",  label:"Generar doc", hidden:cerrado },
-    { id:"cierre",   label:"Cierre",      hidden:cerrado },
+    { id:"cierre",   label:"Cierre", hidden:cerrado },
   ].filter(t => !t.hidden);
 
   async function handleProcesar() {
@@ -1307,13 +1282,7 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
   function handleAccion(tipo) {
     onAccion(caso.uuid, tipo, { nota, leccion });
   }
-  async function handleGenerar() {
-    setProc(true);
-    await onAccion(caso.uuid, "generar_doc", { tipo:tipoDoc });
-    setProc(false);
-  }
 
-  // Atajos de teclado a nivel caso
   useEffect(() => {
     function onKey(e) {
       if (["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return;
@@ -1343,12 +1312,8 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
               </div>
               <Badge label={est.label} color={est.dot} bg={est.bg}/>
               {caso.analisis.escalar && <Badge label="⚑ Escalar" color={DS.red} bg={DS.redL}/>}
-              <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700,
-                color: caso.prioridad==="CRITICA"?DS.red:caso.prioridad==="ALTA"?DS.amber:DS.blue }}>
-                ● {caso.prioridad}
-              </span>
-              {caso.modelo_usado && (
-                <Badge label={caso.modelo_usado} color={DS.purple} bg={DS.purpleL} size={9}/>
+              {caso.analisis.tipado && (
+                <Badge label={`Análisis tipado ${caso.analisis.prompt_version||""}`} color={DS.purple} bg={DS.purpleL} size={9}/>
               )}
               {flowInfo && (
                 <span style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL,
@@ -1373,7 +1338,7 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
                     onMouseEnter={e=>{ e.currentTarget.style.borderColor=DS.gold; e.currentTarget.style.color=DS.gold; }}
                     onMouseLeave={e=>{ e.currentTarget.style.borderColor=DS.border; e.currentTarget.style.color=DS.slateL; }}>✎</button>
                   {setFocus && (
-                    <button onClick={()=>setFocus(f=>!f)} title={focus?"Salir de modo enfoque (F)":"Modo enfoque (F)"}
+                    <button onClick={()=>setFocus(f=>!f)} title={focus?"Salir de enfoque (F)":"Modo enfoque (F)"}
                       style={{ padding:"7px 9px", borderRadius:7,
                         border:`1px solid ${focus?DS.gold:DS.border}`,
                         background:focus?DS.goldFaint:"transparent", cursor:"pointer",
@@ -1394,7 +1359,6 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
             </div>
           </div>
 
-          {/* Sugerencia inteligente */}
           {sug && (
             <div style={{ marginBottom:10, display:"flex", alignItems:"center", gap:8,
               background: sug.accion==="aprobar" ? DS.greenXL : DS.redXL,
@@ -1403,13 +1367,11 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
               <span style={{ fontSize:11, color: sug.accion==="aprobar"?DS.green:DS.red }}>✦</span>
               <span style={{ fontFamily:DS.sans, fontSize:11,
                 color: sug.accion==="aprobar" ? DS.green : DS.red }}>
-                <strong>Sugerencia del sistema:</strong> {sug.accion==="aprobar"?"aprobar":"escalar"} — {sug.motivo}.{" "}
-                La decisión final es tuya.
+                <strong>Sugerencia:</strong> {sug.accion} — {sug.motivo}. La decisión es tuya.
               </span>
             </div>
           )}
 
-          {/* Procesar con IA si no tiene análisis */}
           {!tieneAnalisis && !cerrado && (
             <div style={{ marginBottom:10, background:DS.goldFaint, border:`1px solid ${DS.goldLine}`,
               borderRadius:8, padding:"12px 14px", display:"flex", alignItems:"center", gap:12 }}>
@@ -1467,6 +1429,7 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
               <span style={{ fontFamily:DS.sans, fontSize:12, fontWeight:700, color:DS.red }}>
                 Plazo crítico: {new Date(caso.plazo_critico).toLocaleDateString("es-CL",{
                   weekday:"long", day:"numeric", month:"long" })}
+                {caso.plazo_descripcion ? ` — ${caso.plazo_descripcion}` : ""}
               </span>
             </div>
           )}
@@ -1488,7 +1451,7 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
       {/* Cuerpo */}
       <div style={{ flex:1, overflowY:"auto", padding:"18px 24px" }}>
 
-        {/* TAB: ANÁLISIS IA */}
+        {/* TAB: ANÁLISIS */}
         {tab==="analisis" && (
           <div key={caso.uuid} style={{ animation:"fadeUp .25s ease" }}>
             {tieneAnalisis ? (
@@ -1502,16 +1465,53 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
                     </p>
                   </div>
                 </div>
+
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
-                  <InfoTile label="Confianza del análisis"
-                    val={`${Math.round(caso.analisis.confianza*100)}%`}
-                    color={caso.analisis.confianza>=0.7?DS.green:caso.analisis.confianza>=0.5?DS.amber:DS.red}
-                    sub={caso.analisis.criterio_confianza}/>
-                  <InfoTile label="Nivel de riesgo"
-                    val={(caso.analisis.riesgo||"medio").charAt(0).toUpperCase()+(caso.analisis.riesgo||"medio").slice(1)}
-                    color={rCfg.color}
-                    sub={caso.analisis.escalar ? `⚑ ${caso.analisis.motivo_escalar}` : "Sin escalamiento requerido"}/>
+                  <div style={{ background:DS.bg, border:`1px solid ${DS.border}`, borderRadius:8, padding:"12px 14px" }}>
+                    <div style={{ fontFamily:DS.sans, fontSize:9, color:DS.slateL, textTransform:"uppercase",
+                      letterSpacing:"0.1em", marginBottom:4 }}>Confianza del análisis</div>
+                    <div style={{ fontFamily:DS.serif, fontSize:24, fontWeight:700,
+                      color: caso.analisis.confianza>=0.7?DS.green:caso.analisis.confianza>=0.5?DS.amber:DS.red,
+                      marginBottom:4 }}>
+                      {Math.round(caso.analisis.confianza*100)}%
+                    </div>
+                    {caso.analisis.criterio && (
+                      <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, lineHeight:1.45 }}>
+                        {caso.analisis.criterio}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ background:DS.bg, border:`1px solid ${DS.border}`, borderRadius:8, padding:"12px 14px" }}>
+                    <div style={{ fontFamily:DS.sans, fontSize:9, color:DS.slateL, textTransform:"uppercase",
+                      letterSpacing:"0.1em", marginBottom:4 }}>Nivel de riesgo</div>
+                    <div style={{ fontFamily:DS.serif, fontSize:24, fontWeight:700, color:rColor, marginBottom:4 }}>
+                      {caso.analisis.riesgo.charAt(0).toUpperCase()+caso.analisis.riesgo.slice(1)}
+                    </div>
+                    <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, lineHeight:1.45 }}>
+                      {caso.analisis.escalar
+                        ? `⚑ ${caso.analisis.motivo_escalar || "El agente recomienda escalar"}`
+                        : "Sin escalamiento requerido"}
+                    </div>
+                  </div>
                 </div>
+
+                {caso.analisis.riesgos.length > 0 && (
+                  <div style={{ marginBottom:18 }}>
+                    <SectionLabel icon="⚑">Riesgos detectados</SectionLabel>
+                    <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                      {caso.analisis.riesgos.map((r,i) => (
+                        <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start",
+                          padding:"9px 12px", background:DS.redXL, borderRadius:7,
+                          borderLeft:`3px solid ${DS.red}` }}>
+                          <span style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink, lineHeight:1.5, flex:1 }}>
+                            {typeof r==="string" ? r : JSON.stringify(r)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {caso.analisis.acciones.length > 0 && (
                   <div style={{ marginBottom:18 }}>
                     <SectionLabel icon="✓">Acciones recomendadas</SectionLabel>
@@ -1533,52 +1533,44 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
                     </div>
                   </div>
                 )}
+
                 {caso.analisis.plazos.length > 0 && (
                   <div style={{ marginBottom:18 }}>
                     <SectionLabel icon="◷">Plazos detectados por el agente</SectionLabel>
-                    {caso.analisis.plazos.map((p,i) => (
-                      <div key={i} style={{ display:"flex", alignItems:"center", gap:12,
-                        padding:"10px 14px",
-                        background: p.urgencia==="critica" ? DS.redL : DS.amberL,
-                        borderRadius:7, marginBottom:5 }}>
-                        <div style={{ width:40, height:40, borderRadius:7, background:"rgba(255,255,255,0.5)",
-                          display:"flex", flexDirection:"column", alignItems:"center",
-                          justifyContent:"center", flexShrink:0 }}>
-                          <span style={{ fontFamily:DS.serif, fontSize:18, fontWeight:700,
-                            color: p.urgencia==="critica" ? DS.red : DS.amber, lineHeight:1 }}>{p.dias}</span>
-                          <span style={{ fontFamily:DS.sans, fontSize:7,
-                            color: p.urgencia==="critica" ? DS.red : DS.amber, fontWeight:600 }}>días</span>
+                    {caso.analisis.plazos.map((p,i) => {
+                      const desc = typeof p === "string" ? p : (p.descripcion || JSON.stringify(p));
+                      const dias = typeof p === "object" && p.dias != null ? p.dias : null;
+                      return (
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:12,
+                          padding:"10px 14px", background:DS.amberL, borderRadius:7, marginBottom:5 }}>
+                          {dias !== null && (
+                            <div style={{ width:40, height:40, borderRadius:7, background:"rgba(255,255,255,0.5)",
+                              display:"flex", flexDirection:"column", alignItems:"center",
+                              justifyContent:"center", flexShrink:0 }}>
+                              <span style={{ fontFamily:DS.serif, fontSize:18, fontWeight:700,
+                                color:DS.amber, lineHeight:1 }}>{dias}</span>
+                              <span style={{ fontFamily:DS.sans, fontSize:7, color:DS.amber, fontWeight:600 }}>días</span>
+                            </div>
+                          )}
+                          <span style={{ fontFamily:DS.sans, fontSize:12, fontWeight:600, color:DS.ink }}>{desc}</span>
                         </div>
-                        <span style={{ fontFamily:DS.sans, fontSize:12, fontWeight:600, color:DS.ink }}>
-                          {p.descripcion}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
-                {caso.analisis.fuentes_rag.length > 0 && (
+
+                {caso.analisis.fuentes.length > 0 && (
                   <div style={{ marginBottom:18 }}>
-                    <SectionLabel icon="◈">Fuentes RAG consultadas</SectionLabel>
+                    <SectionLabel icon="◈">Fuentes consultadas</SectionLabel>
                     <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-                      {caso.analisis.fuentes_rag.map((f,i) => {
+                      {caso.analisis.fuentes.map((f,i) => {
                         const nombre = typeof f==="string" ? f : (f.nombre||JSON.stringify(f));
-                        const rel    = typeof f==="object" ? (f.relevancia||0) : 0;
                         return (
                           <div key={i} style={{ display:"flex", alignItems:"center", gap:10,
                             padding:"8px 12px", background:DS.bg, borderRadius:7 }}>
                             <span style={{ fontFamily:DS.mono, fontSize:9, color:DS.gold,
-                              fontWeight:700, flexShrink:0 }}>{typeof f==="object"?f.id||"—":"—"}</span>
+                              fontWeight:700, flexShrink:0 }}>◈</span>
                             <span style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink, flex:1 }}>{nombre}</span>
-                            {rel > 0 && (
-                              <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-                                <div style={{ width:40, height:3, background:DS.border, borderRadius:2 }}>
-                                  <div style={{ width:`${rel*100}%`, height:"100%",
-                                    background: rel>=0.9?DS.green:DS.amber, borderRadius:2 }}/>
-                                </div>
-                                <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700,
-                                  color: rel>=0.9?DS.green:DS.amber }}>{Math.round(rel*100)}%</span>
-                              </div>
-                            )}
                           </div>
                         );
                       })}
@@ -1602,7 +1594,6 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
               </div>
             )}
 
-            {/* Nota del abogado */}
             {!cerrado && (
               <div style={{ marginTop:18 }}>
                 <SectionLabel icon="✎">Nota interna del abogado</SectionLabel>
@@ -1621,7 +1612,7 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
                       fontSize:11, fontWeight:600, color:DS.slate }}
                     onMouseEnter={e=>{ e.currentTarget.style.borderColor=DS.gold; e.currentTarget.style.color=DS.gold; }}
                     onMouseLeave={e=>{ e.currentTarget.style.borderColor=DS.border; e.currentTarget.style.color=DS.slate; }}>
-                    {guardandoNota ? "Guardando…" : "Guardar nota en Supabase"}
+                    {guardandoNota ? "Guardando…" : "Guardar nota"}
                   </button>
                 </div>
               </div>
@@ -1638,7 +1629,7 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
             )}
             {cerrado && caso.leccion && (
               <div style={{ marginTop:18 }}>
-                <SectionLabel icon="◈">Lección registrada en RAG</SectionLabel>
+                <SectionLabel icon="◈">Lección registrada</SectionLabel>
                 <div style={{ background:DS.greenXL, border:`1px solid ${DS.green}20`, borderRadius:8, padding:"12px 14px" }}>
                   <p style={{ fontFamily:DS.sans, fontSize:12, color:DS.green, margin:0, lineHeight:1.6 }}>
                     {caso.leccion}
@@ -1652,7 +1643,7 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
         {/* TAB: CONSULTA */}
         {tab==="consulta" && (
           <div style={{ animation:"fadeUp .25s ease" }}>
-            <SectionLabel icon="◈">Datos del cliente</SectionLabel>
+            <SectionLabel icon="◈">Cliente</SectionLabel>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:18 }}>
               {[
                 ["Empresa",  caso.cliente.empresa],
@@ -1667,14 +1658,14 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
                 <div key={l} style={{ background:DS.bg, borderRadius:7, padding:"9px 12px" }}>
                   <div style={{ fontFamily:DS.sans, fontSize:9, color:DS.slateL,
                     textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:2 }}>{l}</div>
-                  <div style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink, fontWeight:500 }}>{v||"-"}</div>
+                  <div style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink, fontWeight:500 }}>{v||"—"}</div>
                 </div>
               ))}
             </div>
-            <SectionLabel icon="☰">Consulta original del cliente</SectionLabel>
+            <SectionLabel icon="☰">Consulta original</SectionLabel>
             <div style={{ background:DS.bg, border:`1px solid ${DS.border}`, borderRadius:8, padding:"14px 16px" }}>
               <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.inkM, margin:0,
-                lineHeight:1.75, fontStyle:"italic" }}>"{caso.asunto}"</p>
+                lineHeight:1.75, fontStyle:"italic" }}>"{caso.consulta_raw || caso.asunto}"</p>
             </div>
           </div>
         )}
@@ -1710,42 +1701,6 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
           </div>
         )}
 
-        {/* TAB: GENERAR DOC */}
-        {tab==="generar" && !cerrado && (
-          <div style={{ animation:"fadeUp .25s ease" }}>
-            <SectionLabel icon="◻">Generador de documentos</SectionLabel>
-            <div style={{ background:DS.bg, border:`1px solid ${DS.border}`, borderRadius:10, padding:"20px" }}>
-              <label style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700, color:DS.slateL,
-                textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:8 }}>
-                Tipo de documento
-              </label>
-              <select value={tipoDoc} onChange={e=>setTipoDoc(e.target.value)}
-                style={{ width:"100%", padding:"9px 11px", borderRadius:7,
-                  border:`1px solid ${DS.border}`, background:DS.bgCard, fontFamily:DS.sans,
-                  fontSize:13, color:DS.ink, outline:"none", cursor:"pointer", marginBottom:16 }}>
-                {TIPOS_DOC.map(t=><option key={t}>{t}</option>)}
-              </select>
-              <div style={{ background:DS.goldFaint, border:`1px solid ${DS.goldLine}`,
-                borderRadius:8, padding:"10px 14px", marginBottom:16 }}>
-                <p style={{ fontFamily:DS.sans, fontSize:11, color:DS.gold, margin:0, lineHeight:1.5 }}>
-                  El documento será generado por el agente IA usando el análisis de este caso
-                  y guardado en el expediente Drive.
-                </p>
-              </div>
-              <button onClick={handleGenerar} disabled={procesando}
-                style={{ width:"100%", padding:"11px", background: procesando?DS.border:DS.ink,
-                  border:`1px solid ${DS.goldLine}`, borderRadius:8,
-                  cursor: procesando?"wait":"pointer", fontFamily:DS.sans, fontSize:13,
-                  fontWeight:700, color:DS.gold, display:"flex", alignItems:"center",
-                  justifyContent:"center", gap:8, transition:"all .15s" }}>
-                {procesando
-                  ? <><span style={{ display:"inline-block", animation:"spin 1s linear infinite" }}>⟳</span> Generando…</>
-                  : <>✦ Generar con IA → n8n</>}
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* TAB: CIERRE */}
         {tab==="cierre" && !cerrado && (
           <div style={{ animation:"fadeUp .25s ease" }}>
@@ -1753,10 +1708,10 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
             <div style={{ background:DS.goldFaint, border:`1px solid ${DS.goldLine}`,
               borderRadius:8, padding:"12px 14px", marginBottom:16 }}>
               <p style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL, margin:"0 0 8px", lineHeight:1.5 }}>
-                Esta lección se guardará en Supabase y alimentará el RAG para mejorar análisis futuros.
+                Esta lección alimenta el conocimiento del sistema para casos futuros.
               </p>
               <textarea value={leccion} onChange={e=>setLeccion(e.target.value)}
-                placeholder="Ej: Art. 161 CT aplica cuando hay necesidades de la empresa documentadas. Siempre verificar cotizaciones al día antes del finiquito…"
+                placeholder="Ej: Art. 161 CT aplica cuando hay necesidades de la empresa documentadas…"
                 style={{ width:"100%", minHeight:100, background:"#fff",
                   border:`1px solid ${DS.goldLine}`, borderRadius:7, boxSizing:"border-box",
                   padding:"9px 12px", fontFamily:DS.sans, fontSize:12, color:DS.ink,
@@ -1772,7 +1727,7 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
             </div>
             {!tieneAnalisis && (
               <p style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, marginTop:8 }}>
-                * "Aprobar y enviar" requiere análisis del agente primero.
+                * "Aprobar y enviar" requiere análisis del agente.
               </p>
             )}
           </div>
@@ -1824,180 +1779,174 @@ function QueueZero({ sesion }) {
   );
 }
 
-// ─── PANTALLA: CENTRO DE MANDO ────────────────────────────────────────────────
-function PantallaHome({ casos, plazos, setNav, agentesStatus }) {
-  const hitl      = casos.filter(c=>c.estado==="HITL").length;
-  const escalados = casos.filter(c=>c.estado==="ESCALADO").length;
-  const slaVenc   = casos.filter(c=>c.estado!=="CERRADO"&&slaInfo(c.sla_horas,c.horas_transcurridas).label==="Vencido").length;
-  const plazCrit  = plazos.filter(p=>p.dias<=3&&!p.gestionado).length;
+// ─── PANTALLA: HOY ────────────────────────────────────────────────────────────
+// Una sola pregunta respondida: ¿qué necesita mi atención?
+function PantallaHoy({ casos, plazos, setNav, abrirCaso }) {
+  const activos    = casos.filter(c => c.estado !== "CERRADO");
+  const escalados  = activos.filter(c => c.estado === "ESCALADO");
+  const hitl       = activos.filter(c => c.estado === "HITL");
+  const vencidos   = activos.filter(c => slaInfo(c.sla_horas, c.horas_transcurridas).label === "Vencido");
+  const plazosCrit = plazos.filter(p => p.dias <= 3 && !p.gestionado);
+  const cerradosHoy = casos.filter(c => c.estado === "CERRADO" && c.historial.some(h =>
+    h.tipo === "abogado" && new Date(h.ts).toDateString() === new Date().toDateString())).length;
 
-  const feed = [...casos]
-    .flatMap(c => c.historial.map(h => ({
-      ...h, caso_id:c.id, empresa:c.cliente.empresa, area:c.area,
-    })))
-    .sort((a,b) => new Date(b.ts) - new Date(a.ts))
-    .slice(0, 10);
+  // Lista única de atención, ordenada por urgencia real
+  const items = [];
+  escalados.forEach(c => items.push({
+    tipo:"caso", peso: 30 + c.horas_transcurridas / c.sla_horas, caso:c,
+    motivo:"Escalado — requiere tu intervención", color:DS.red,
+  }));
+  plazosCrit.forEach(p => items.push({
+    tipo:"plazo", peso: 25 - p.dias * 2, plazo:p,
+    motivo: p.dias <= 0 ? "Plazo VENCIDO" : `Plazo vence en ${p.dias} día${p.dias!==1?"s":""}`,
+    color:DS.red,
+  }));
+  hitl.forEach(c => {
+    const venc = slaInfo(c.sla_horas, c.horas_transcurridas).label === "Vencido";
+    items.push({
+      tipo:"caso", peso: (venc ? 15 : 5) + c.horas_transcurridas / (c.sla_horas * 4), caso:c,
+      motivo: venc ? "Pendiente de revisión — SLA vencido" : "Pendiente de revisión",
+      color: venc ? DS.amber : DS.blue,
+    });
+  });
+  items.sort((a,b) => b.peso - a.peso);
+  const top = items.slice(0, 8);
+  const restantes = items.length - top.length;
 
-  const KPICard = ({ label, val, sub, color, onClick, warn }) => (
-    <div onClick={onClick}
-      style={{ background:DS.bgCard, border:`1px solid ${warn?color:DS.border}`, borderRadius:10,
-        padding:"20px 22px", cursor:onClick?"pointer":"default", borderTop:`3px solid ${color}`,
-        transition:"box-shadow .15s, transform .15s" }}
-      onMouseEnter={e=>{ if(onClick){e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,.1)";e.currentTarget.style.transform="translateY(-1px)";} }}
-      onMouseLeave={e=>{ e.currentTarget.style.boxShadow="none"; e.currentTarget.style.transform="translateY(0)"; }}>
-      <div style={{ fontFamily:DS.serif, fontSize:48, fontWeight:700, color, lineHeight:1 }}>{val}</div>
-      <div style={{ fontFamily:DS.sans, fontSize:12, fontWeight:600, color:DS.ink, marginTop:6 }}>{label}</div>
-      {sub && <div style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL, marginTop:3 }}>{sub}</div>}
-      {onClick && <div style={{ fontFamily:DS.sans, fontSize:10, color, marginTop:6, fontWeight:600 }}>Ver →</div>}
-    </div>
-  );
+  const pendientes = escalados.length + hitl.length;
 
   return (
-    <div style={{ flex:1, overflowY:"auto", padding:"28px 32px", background:DS.bg }}>
-      <div style={{ marginBottom:24, animation:"fadeUp .3s ease" }}>
-        <h1 style={{ fontFamily:DS.serif, fontSize:26, fontWeight:700, color:DS.ink, margin:"0 0 4px" }}>
-          {saludo()}, Kurt.
-        </h1>
-        <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL, margin:0 }}>
-          {new Date().toLocaleDateString("es-CL",{ weekday:"long", day:"numeric", month:"long", year:"numeric" })}
-          {hitl+escalados > 0
-            ? ` — ${hitl+escalados} caso${hitl+escalados!==1?"s":""} esperando tu revisión.`
-            : " — Todo al día."}
-        </p>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:28 }}>
-        <KPICard label="Cola HITL" val={hitl} sub="Pendientes de revisión"
-          color={hitl>0?DS.amber:DS.green} warn={hitl>0} onClick={hitl>0?()=>setNav("hitl"):null}/>
-        <KPICard label="Escalados" val={escalados} sub="Requieren atención urgente"
-          color={escalados>0?DS.red:DS.green} warn={escalados>0} onClick={escalados>0?()=>setNav("hitl"):null}/>
-        <KPICard label="SLA vencido" val={slaVenc} sub="Casos fuera de plazo"
-          color={slaVenc>0?DS.red:DS.green} warn={slaVenc>0} onClick={slaVenc>0?()=>setNav("casos"):null}/>
-        <KPICard label="Plazos críticos" val={plazCrit} sub="Vencen en ≤3 días"
-          color={plazCrit>0?DS.red:DS.green} warn={plazCrit>0} onClick={plazCrit>0?()=>setNav("plazos"):null}/>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 320px", gap:20 }}>
-        {/* Actividad reciente */}
-        <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, overflow:"hidden" }}>
-          <div style={{ padding:"16px 20px", borderBottom:`1px solid ${DS.border}`,
-            display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <span style={{ fontFamily:DS.serif, fontSize:17, fontWeight:700, color:DS.ink }}>Actividad reciente</span>
-            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-              <div style={{ width:6, height:6, borderRadius:"50%", background:DS.green,
-                boxShadow:`0 0 6px ${DS.green}` }}/>
-              <span style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL }}>En vivo · Supabase</span>
-            </div>
-          </div>
-          {feed.length === 0 && (
-            <div style={{ padding:"32px 20px", textAlign:"center" }}>
-              <span style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL }}>Sin actividad reciente</span>
-            </div>
-          )}
-          {feed.map((item,i) => {
-            const color = item.tipo==="ia"?DS.gold:item.tipo==="abogado"?DS.blue:DS.slateL;
-            const lbl   = item.tipo==="ia"?"IA":item.tipo==="abogado"?"ABG":"SIS";
-            return (
-              <div key={i} style={{ padding:"12px 20px",
-                borderBottom: i<feed.length-1 ? `1px solid ${DS.border}` : "none",
-                display:"flex", gap:12, alignItems:"flex-start" }}>
-                <div style={{ width:24, height:24, borderRadius:"50%", background:`${color}15`,
-                  border:`1px solid ${color}25`, display:"flex", alignItems:"center",
-                  justifyContent:"center", flexShrink:0, marginTop:1 }}>
-                  <span style={{ fontFamily:DS.sans, fontSize:8, fontWeight:800, color }}>{lbl}</span>
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between",
-                    alignItems:"flex-start", marginBottom:2 }}>
-                    <span style={{ fontFamily:DS.sans, fontSize:12, fontWeight:600, color:DS.ink }}>
-                      {item.empresa}
-                    </span>
-                    <span style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL,
-                      flexShrink:0, marginLeft:8 }}>{timeAgo(item.ts)}</span>
-                  </div>
-                  <div style={{ fontFamily:DS.sans, fontSize:11, color:DS.slate, lineHeight:1.4 }}>
-                    {item.msg.length>75 ? item.msg.slice(0,75)+"…" : item.msg}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+    <div style={{ flex:1, overflowY:"auto", padding:"32px 40px", background:DS.bg }}>
+      <div style={{ maxWidth:860, margin:"0 auto" }}>
+        {/* Saludo */}
+        <div style={{ marginBottom:28, animation:"fadeUp .3s ease" }}>
+          <h1 style={{ fontFamily:DS.serif, fontSize:28, fontWeight:700, color:DS.ink, margin:"0 0 4px" }}>
+            {saludo()}, Kurt.
+          </h1>
+          <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL, margin:0 }}>
+            {new Date().toLocaleDateString("es-CL",{ weekday:"long", day:"numeric", month:"long" })}
+            {" — "}
+            {pendientes === 0 && plazosCrit.length === 0
+              ? "nada requiere tu atención."
+              : `${items.length} tema${items.length!==1?"s":""} requieren tu atención.`}
+          </p>
         </div>
 
-        {/* Columna derecha */}
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          {/* Plazos urgentes */}
-          <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, overflow:"hidden" }}>
-            <div style={{ padding:"13px 18px", borderBottom:`1px solid ${DS.border}`,
-              display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <span style={{ fontFamily:DS.serif, fontSize:15, fontWeight:700, color:DS.ink }}>Plazos urgentes</span>
-              <button onClick={()=>setNav("plazos")}
-                style={{ border:"none", background:"transparent", cursor:"pointer",
-                  fontFamily:DS.sans, fontSize:11, color:DS.gold, fontWeight:600 }}>Ver todos →</button>
+        {/* Tres números — solo los que importan */}
+        <div style={{ display:"flex", gap:28, marginBottom:32, animation:"fadeUp .35s ease" }}>
+          {[
+            { label:"Por revisar",     val:pendientes,        color: pendientes>0 ? DS.amber : DS.green,
+              onClick: pendientes>0 ? ()=>setNav("revisar") : null },
+            { label:"Plazos críticos", val:plazosCrit.length, color: plazosCrit.length>0 ? DS.red : DS.green,
+              onClick: plazosCrit.length>0 ? ()=>setNav("agenda") : null },
+            { label:"SLA vencidos",    val:vencidos.length,   color: vencidos.length>0 ? DS.red : DS.green,
+              onClick: vencidos.length>0 ? ()=>setNav("casos") : null },
+            { label:"Cerrados hoy",    val:cerradosHoy,       color: DS.slate, onClick:null },
+          ].map(({label,val,color,onClick}) => (
+            <div key={label} onClick={onClick||undefined}
+              style={{ cursor:onClick?"pointer":"default" }}>
+              <div style={{ fontFamily:DS.serif, fontSize:40, fontWeight:700, color, lineHeight:1 }}>{val}</div>
+              <div style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL, marginTop:4 }}>
+                {label}{onClick && <span style={{ color, fontWeight:600 }}> →</span>}
+              </div>
             </div>
-            {plazos.filter(p=>!p.gestionado).slice(0,4).map((p,i,arr) => {
-              const color = p.dias<=3?DS.red:p.dias<=7?DS.amber:DS.blue;
-              const bg    = p.dias<=3?DS.redL:p.dias<=7?DS.amberL:DS.blueL;
-              return (
-                <div key={p.id} style={{ padding:"11px 18px",
-                  borderBottom: i<arr.length-1 ? `1px solid ${DS.border}` : "none",
-                  display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:34, height:34, borderRadius:6, background:bg,
-                    display:"flex", flexDirection:"column", alignItems:"center",
-                    justifyContent:"center", flexShrink:0 }}>
-                    <span style={{ fontFamily:DS.serif, fontSize:15, fontWeight:700, color, lineHeight:1 }}>
-                      {p.dias===0 ? "HOY" : p.dias < 0 ? "VEN" : p.dias}
-                    </span>
-                    {p.dias > 0 && <span style={{ fontFamily:DS.sans, fontSize:6, color, fontWeight:600 }}>días</span>}
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontFamily:DS.sans, fontSize:11, fontWeight:600, color:DS.ink,
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                      {p.cliente.split(" ").slice(0,2).join(" ")}
-                    </div>
-                    <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL,
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                      {p.tipo} — {(p.asunto||"").slice(0,30)}{(p.asunto||"").length>30?"…":""}
-                    </div>
-                  </div>
+          ))}
+        </div>
+
+        {/* Lista de atención o estado en calma */}
+        {top.length === 0 ? (
+          <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:14,
+            padding:"56px 24px", textAlign:"center", animation:"fadeUp .4s ease" }}>
+            <div style={{ width:64, height:64, borderRadius:"50%", background:DS.greenL,
+              display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px" }}>
+              <span style={{ fontSize:28, color:DS.green }}>✓</span>
+            </div>
+            <div style={{ fontFamily:DS.serif, fontSize:24, fontWeight:700, color:DS.ink, marginBottom:4 }}>
+              Todo al día.
+            </div>
+            <div style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL }}>
+              No hay casos ni plazos que requieran tu atención ahora.
+            </div>
+          </div>
+        ) : (
+          <div style={{ animation:"fadeUp .4s ease" }}>
+            <SectionLabel icon="◎">Necesita tu atención</SectionLabel>
+            <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:12, overflow:"hidden" }}>
+              {top.map((item, i) => (
+                <div key={i}
+                  onClick={() => {
+                    if (item.tipo === "caso") abrirCaso(item.caso.uuid);
+                    else setNav("agenda");
+                  }}
+                  style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 20px",
+                    borderBottom: i < top.length-1 ? `1px solid ${DS.border}` : "none",
+                    cursor:"pointer", transition:"background .12s" }}
+                  onMouseEnter={e=>e.currentTarget.style.background=DS.bg}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:item.color, flexShrink:0 }}/>
+                  {item.tipo === "caso" ? (
+                    <>
+                      <div style={{ width:26, height:26, borderRadius:5,
+                        background:AREA_COLOR[item.caso.area]||DS.slate,
+                        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                        <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:800, color:"#fff" }}>
+                          {AREA_ICON[item.caso.area]||"?"}
+                        </span>
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.ink,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          {item.caso.cliente.empresa} — {item.caso.asunto.slice(0,60)}
+                        </div>
+                        <div style={{ fontFamily:DS.sans, fontSize:11, color:item.color, fontWeight:600 }}>
+                          {item.motivo}
+                        </div>
+                      </div>
+                      <span style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, flexShrink:0 }}>
+                        {timeAgo(item.caso.ingreso)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ width:26, height:26, borderRadius:5, background:DS.redL,
+                        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                        <span style={{ fontSize:12 }}>⏰</span>
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.ink,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          {item.plazo.tipo} — {item.plazo.asunto.slice(0,60)}
+                        </div>
+                        <div style={{ fontFamily:DS.sans, fontSize:11, color:item.color, fontWeight:600 }}>
+                          {item.motivo}
+                        </div>
+                      </div>
+                      <span style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, flexShrink:0 }}>
+                        {new Date(item.plazo.fecha).toLocaleDateString("es-CL",{day:"2-digit",month:"short"})}
+                      </span>
+                    </>
+                  )}
+                  <span style={{ color:DS.slateXL, fontSize:14, flexShrink:0 }}>›</span>
                 </div>
-              );
-            })}
-            {plazos.filter(p=>!p.gestionado).length === 0 && (
-              <div style={{ padding:"20px 18px", textAlign:"center" }}>
-                <span style={{ fontFamily:DS.sans, fontSize:12, color:DS.slateL }}>✓ Sin plazos urgentes</span>
+              ))}
+            </div>
+            {restantes > 0 && (
+              <div style={{ textAlign:"center", marginTop:12 }}>
+                <button onClick={()=>setNav("revisar")}
+                  style={{ border:"none", background:"transparent", cursor:"pointer",
+                    fontFamily:DS.sans, fontSize:12, color:DS.gold, fontWeight:600 }}>
+                  Ver los {restantes} restantes en Revisar →
+                </button>
               </div>
             )}
           </div>
-
-          {/* Estado agentes */}
-          <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, overflow:"hidden" }}>
-            <div style={{ padding:"13px 18px", borderBottom:`1px solid ${DS.border}` }}>
-              <span style={{ fontFamily:DS.serif, fontSize:15, fontWeight:700, color:DS.ink }}>Estado agentes</span>
-            </div>
-            {agentesStatus.map((ag,i) => {
-              const color = ag.estado==="ok"?DS.green:ag.estado==="warn"?DS.amber:DS.red;
-              const lbl   = ag.estado==="ok"?"OK":ag.estado==="warn"?"Atención":"Error";
-              return (
-                <div key={ag.id} style={{ padding:"9px 18px",
-                  borderBottom: i<agentesStatus.length-1 ? `1px solid ${DS.border}` : "none",
-                  display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:5, height:5, borderRadius:"50%", background:color, flexShrink:0 }}/>
-                  <span style={{ fontFamily:DS.mono, fontSize:10, color:DS.gold, width:22 }}>{ag.id}</span>
-                  <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.ink, flex:1 }}>{ag.nombre}</span>
-                  <span style={{ fontFamily:DS.sans, fontSize:9, fontWeight:700, color,
-                    background:`${color}15`, padding:"2px 6px", borderRadius:3 }}>{lbl}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── PANTALLA: CASOS / COLA HITL ──────────────────────────────────────────────
+// ─── PANTALLA: REVISAR / CASOS (componente compartido) ───────────────────────
 function PantallaCasos({
   casos, actualizarEstado, actualizarNota, actualizarDatos, eliminarCaso, cerrarCaso,
   showToast, soloHITL=false, sesion, setSesion, selIdExterno, setSelIdExterno,
@@ -2019,7 +1968,7 @@ function PantallaCasos({
 
   const filtered = casos.filter(c => {
     let okE;
-    if (filtroEstado==="TODOS")     okE = true;
+    if (filtroEstado==="TODOS")         okE = true;
     else if (filtroEstado==="HITL_ESC") okE = c.estado==="HITL"||c.estado==="ESCALADO";
     else okE = c.estado===filtroEstado;
     const okA = filtroArea==="TODAS" || c.area===filtroArea;
@@ -2029,7 +1978,8 @@ function PantallaCasos({
       || c.id.toLowerCase().includes(q)
       || c.asunto.toLowerCase().includes(q)
       || c.analisis.resumen.toLowerCase().includes(q)
-      || c.cliente.nombre.toLowerCase().includes(q);
+      || c.cliente.nombre.toLowerCase().includes(q)
+      || (c.cliente.rut||"").includes(q);
     return okE && okA && okS;
   }).sort((a,b) => {
     if (!soloHITL) return 0;
@@ -2045,7 +1995,6 @@ function PantallaCasos({
       setSelId(filtered[0].uuid);
   }, [filtroEstado, filtroArea, search, filtered.length]);
 
-  // J/K navigation
   useEffect(() => {
     function onKey(e) {
       if (["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return;
@@ -2070,53 +2019,38 @@ function PantallaCasos({
     const caso = casos.find(c=>c.uuid===uuid);
     if (!caso) return;
 
-    // ── PROCESAR ──
     if (tipo==="procesar") {
       showToast("Enviando al agente IA…","info");
       await actualizarEstado(uuid,"EN_REVISION");
       const r = await dispararWebhook(WH.procesar, { caso_id:uuid, area:caso.area });
-      if (r.ok) showToast("Agente procesando — el dashboard se actualizará solo","ok");
+      if (r.ok) showToast("Agente procesando — se actualizará solo","ok");
       else showToast("Error al conectar con n8n","err");
       return;
     }
 
-    // ── GUARDAR NOTA ──
     if (tipo==="guardarNota") {
       const e = await actualizarNota(uuid, data);
       if (e) showToast("Error al guardar nota","err");
-      else   showToast("Nota guardada en Supabase","ok");
+      else   showToast("Nota guardada","ok");
       return;
     }
 
-    // ── CAMBIAR ESTADO MANUAL ──
-    if (tipo==="cambiarEstado") {
-      const e = await actualizarEstado(uuid, data);
-      if (e) showToast("Error al cambiar estado","err");
-      else   showToast(`Estado → ${ESTADO_CFG[data]?.label||data}`,"ok");
-      return;
-    }
-
-    // ── APROBAR ──
     if (tipo==="aprobar") {
       showToast("Enviando aprobación…","info");
       setSesion(s=>({...s,aprobados:s.aprobados+1}));
       const r = await dispararWebhook(WH.aprobar, {
-        caso_id:  uuid,
-        nota:     data?.nota||"",
-        folio:    caso.id,
-        contacto_email: caso.cliente.email,
-        contacto_nombre:caso.cliente.nombre,
+        caso_id: uuid,
+        nota:    data?.nota||"",
+        folio:   caso.id,
       });
       if (r.ok) {
         await actualizarEstado(uuid,"CERRADO");
-        showToast("Borrador aprobado y enviado al cliente","ok");
-        // Flow mode: auto-avanzar en cola HITL
+        showToast("Aprobado — email enviado al cliente","ok");
         if (soloHITL) autoAvanzar(uuid);
       } else showToast("Error al aprobar","err");
       return;
     }
 
-    // ── ESCALAR ──
     if (tipo==="escalar") {
       showToast("Escalando caso…","info");
       setSesion(s=>({...s,escalados:s.escalados+1}));
@@ -2124,47 +2058,44 @@ function PantallaCasos({
         caso_id: uuid, area: caso.area, folio: caso.id,
       });
       await actualizarEstado(uuid,"ESCALADO");
-      if (r.ok) showToast("Caso escalado — notificación enviada a Slack","warn");
-      else      showToast("Caso escalado en Supabase","warn");
+      if (r.ok) showToast("Escalado — notificado en Slack","warn");
+      else      showToast("Escalado en Supabase","warn");
       return;
     }
 
-    // ── RECHAZAR (devolver a HITL) ──
     if (tipo==="rechazar") {
       setSesion(s=>({...s,rechazados:s.rechazados+1}));
       await actualizarEstado(uuid,"HITL");
-      showToast("Caso devuelto a cola HITL","warn");
+      showToast("Devuelto a cola de revisión","warn");
       return;
     }
 
-    // ── INFO ──
     if (tipo==="info") {
-      showToast("Solicitud de información enviada al cliente","ok");
+      showToast("Solicitando información al cliente…","info");
+      const r = await dispararWebhook(WH.info, {
+        caso_id: uuid,
+        folio: caso.id,
+        contacto_email: caso.cliente.email,
+        contacto_nombre: caso.cliente.nombre,
+        detalle: data?.nota || "",
+      });
+      await actualizarEstado(uuid, "EN_REVISION");
+      if (r.ok) showToast("Solicitud enviada al cliente — caso en espera de info","ok");
+      else      showToast("Marcado en espera (revisar webhook per-solicitar-info en n8n)","warn");
+      if (soloHITL) autoAvanzar(uuid);
       return;
     }
 
-    // ── CERRAR ──
     if (tipo==="cerrar") {
       const e = await cerrarCaso(uuid, data?.leccion||"");
-      if (e) showToast("Error al cerrar caso","err");
+      if (e) showToast("Error al cerrar","err");
       else {
         if (data?.leccion) {
           await dispararWebhook(WH.cerrar, { caso_id:uuid, leccion:data.leccion });
         }
-        showToast("Caso cerrado — lección guardada en Supabase","ok");
+        showToast("Caso cerrado","ok");
         if (soloHITL) autoAvanzar(uuid);
       }
-      return;
-    }
-
-    // ── GENERAR DOC ──
-    if (tipo==="generar_doc") {
-      showToast("Generando documento…","info");
-      const r = await dispararWebhook(WH.procesar, {
-        caso_id:uuid, tipo_doc:data?.tipo, accion:"generar_documento",
-      });
-      if (r.ok) showToast(`Documento "${data?.tipo}" generado → Drive ✓`,"ok");
-      else      showToast("Error al generar documento","err");
       return;
     }
   }
@@ -2184,7 +2115,7 @@ function PantallaCasos({
   async function handleSaveEditar(form) {
     const e = await actualizarDatos(selCaso.uuid, form);
     if (e) showToast("Error al actualizar","err");
-    else { showToast("Guardado en Supabase","ok"); setModalEditar(null); }
+    else { showToast("Guardado","ok"); setModalEditar(null); }
   }
 
   async function handleEliminar() {
@@ -2217,7 +2148,7 @@ function PantallaCasos({
             borderBottom:`1px solid ${DS.border}`, flexShrink:0, minWidth:308 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
               <span style={{ fontFamily:DS.serif, fontSize:17, fontWeight:700, color:DS.ink }}>
-                {soloHITL ? "Cola HITL" : "Casos"}
+                {soloHITL ? "Por revisar" : "Todos los casos"}
               </span>
               <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL }}>{filtered.length}</span>
             </div>
@@ -2225,45 +2156,47 @@ function PantallaCasos({
               <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)",
                 fontSize:13, color:DS.slateL }}>⌕</span>
               <input value={search} onChange={e=>setSearch(e.target.value)}
-                placeholder={soloHITL?"Buscar en cola…":"Empresa, asunto, análisis…"}
+                placeholder="Empresa, folio, RUT, asunto…"
                 style={{ width:"100%", paddingLeft:28, height:32, background:DS.bgInput,
                   border:`1px solid ${DS.border}`, borderRadius:7, boxSizing:"border-box",
                   fontFamily:DS.sans, fontSize:12, color:DS.ink, outline:"none" }}
                 onFocus={e=>e.target.style.borderColor=DS.gold}
                 onBlur={e=>e.target.style.borderColor=DS.border}/>
             </div>
-            <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:6 }}>
-              {["TODOS","HITL","ESCALADO","EN_REVISION","CERRADO"].map(e => {
-                const cfg = ESTADO_CFG[e];
-                const active = filtroEstado===e;
-                return (
-                  <button key={e} onClick={()=>setFiltroEstado(e)}
-                    style={{ fontFamily:DS.sans, fontSize:9, fontWeight:600, padding:"3px 8px",
-                      borderRadius:4, cursor:"pointer",
-                      border:`1px solid ${active?(cfg?.dot||DS.gold):DS.border}`,
-                      background:active?(cfg?cfg.bg:DS.goldFaint):"transparent",
-                      color:active?(cfg?.txt||DS.gold):DS.slateL }}>
-                    {e==="TODOS"?"Todos":cfg?.label||e}
-                  </button>
-                );
-              })}
-            </div>
             {!soloHITL && (
-              <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-                {areas.slice(0,7).map(a => {
-                  const active = filtroArea===a;
-                  return (
-                    <button key={a} onClick={()=>setFiltroArea(a)}
-                      style={{ fontFamily:DS.sans, fontSize:9, fontWeight:600, padding:"3px 8px",
-                        borderRadius:4, cursor:"pointer",
-                        border:`1px solid ${active?(AREA_COLOR[a]||DS.gold):DS.border}`,
-                        background:active?`${(AREA_COLOR[a]||DS.gold)}20`:"transparent",
-                        color:active?(AREA_COLOR[a]||DS.gold):DS.slateL }}>
-                      {a==="TODAS"?"Todas":a}
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:6 }}>
+                  {["TODOS","HITL","ESCALADO","EN_REVISION","CERRADO"].map(e => {
+                    const cfg = ESTADO_CFG[e];
+                    const active = filtroEstado===e;
+                    return (
+                      <button key={e} onClick={()=>setFiltroEstado(e)}
+                        style={{ fontFamily:DS.sans, fontSize:9, fontWeight:600, padding:"3px 8px",
+                          borderRadius:4, cursor:"pointer",
+                          border:`1px solid ${active?(cfg?.dot||DS.gold):DS.border}`,
+                          background:active?(cfg?cfg.bg:DS.goldFaint):"transparent",
+                          color:active?(cfg?.txt||DS.gold):DS.slateL }}>
+                        {e==="TODOS"?"Todos":cfg?.label||e}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                  {areas.slice(0,8).map(a => {
+                    const active = filtroArea===a;
+                    return (
+                      <button key={a} onClick={()=>setFiltroArea(a)}
+                        style={{ fontFamily:DS.sans, fontSize:9, fontWeight:600, padding:"3px 8px",
+                          borderRadius:4, cursor:"pointer",
+                          border:`1px solid ${active?(AREA_COLOR[a]||DS.gold):DS.border}`,
+                          background:active?`${(AREA_COLOR[a]||DS.gold)}20`:"transparent",
+                          color:active?(AREA_COLOR[a]||DS.gold):DS.slateL }}>
+                        {a==="TODAS"?"Todas":a}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
           <div style={{ flex:1, overflowY:"auto", minWidth:308 }}>
@@ -2275,9 +2208,6 @@ function PantallaCasos({
                 </span>
                 <span style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.slate }}>
                   {soloHITL?"Cola limpia":"Sin resultados"}
-                </span>
-                <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL }}>
-                  {soloHITL?"No hay casos pendientes":"Ajusta los filtros"}
                 </span>
               </div>
             ) : filtered.map(c => (
@@ -2303,20 +2233,20 @@ function PantallaCasos({
   );
 }
 
-// ─── PANTALLA: AGENDA LEGAL ───────────────────────────────────────────────────
-function PantallaPlazos({ plazos, loading, marcarGestionado }) {
+// ─── PANTALLA: AGENDA ─────────────────────────────────────────────────────────
+function PantallaAgenda({ plazos, loading, marcarGestionado, abrirCaso }) {
   const grupos = [
-    { label:"Críticos — vencen en ≤3 días",        items:plazos.filter(p=>p.dias<=3&&!p.gestionado) },
-    { label:"Próximos — 4 a 15 días",              items:plazos.filter(p=>p.dias>3&&p.dias<=15&&!p.gestionado) },
-    { label:"En el horizonte — más de 15 días",    items:plazos.filter(p=>p.dias>15&&!p.gestionado) },
-    { label:"Gestionados",                         items:plazos.filter(p=>p.gestionado) },
+    { label:"Críticos — vencen en ≤3 días",     items:plazos.filter(p=>p.dias<=3&&!p.gestionado) },
+    { label:"Próximos — 4 a 15 días",           items:plazos.filter(p=>p.dias>3&&p.dias<=15&&!p.gestionado) },
+    { label:"En el horizonte — más de 15 días", items:plazos.filter(p=>p.dias>15&&!p.gestionado) },
+    { label:"Gestionados",                      items:plazos.filter(p=>p.gestionado) },
   ];
 
   if (loading) return (
     <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center",
       flexDirection:"column", gap:12, background:DS.bg }}>
       <span style={{ fontSize:32, color:DS.slateXL, display:"inline-block", animation:"spin 1.5s linear infinite" }}>⟳</span>
-      <span style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL }}>Cargando plazos desde Supabase…</span>
+      <span style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL }}>Cargando plazos…</span>
     </div>
   );
 
@@ -2326,13 +2256,13 @@ function PantallaPlazos({ plazos, loading, marcarGestionado }) {
         Agenda Legal
       </h1>
       <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL, margin:"0 0 28px" }}>
-        Vencimientos activos — marcas INAPI, SII, DT y contratos · {plazos.length} plazos
+        {plazos.filter(p=>!p.gestionado).length} plazos activos
       </p>
       {plazos.length===0 && (
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
           flexDirection:"column", gap:12, padding:"60px 0" }}>
           <span style={{ fontSize:40, color:DS.slateXL }}>◷</span>
-          <span style={{ fontFamily:DS.sans, fontSize:14, color:DS.slateL }}>Sin plazos activos</span>
+          <span style={{ fontFamily:DS.sans, fontSize:14, color:DS.slateL }}>Sin plazos registrados</span>
         </div>
       )}
       {grupos.map(({ label, items }) => items.length>0 && (
@@ -2345,13 +2275,16 @@ function PantallaPlazos({ plazos, loading, marcarGestionado }) {
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
             {items.map(p => {
-              const color = p.gestionado?DS.green:p.dias<0?DS.red:p.dias<=3?DS.red:p.dias<=7?DS.amber:DS.blue;
+              const color = p.gestionado?DS.green:p.dias<=3?DS.red:p.dias<=7?DS.amber:DS.blue;
               const bg    = p.gestionado?DS.greenL:p.dias<=3?DS.redL:p.dias<=7?DS.amberL:DS.blueL;
               const diasLabel = p.gestionado?"✓":p.dias<0?"VENC":p.dias===0?"HOY":`${p.dias}d`;
               return (
-                <div key={p.id} style={{ background:DS.bgCard, border:`1px solid ${DS.border}`,
+                <div key={p.id}
+                  onClick={p.caso_id ? ()=>abrirCaso(p.caso_id) : undefined}
+                  style={{ background:DS.bgCard, border:`1px solid ${DS.border}`,
                   borderRadius:10, padding:"14px 18px", display:"flex", alignItems:"center", gap:14,
-                  opacity: p.gestionado?0.6:1, transition:"opacity .3s" }}>
+                  opacity: p.gestionado?0.6:1, transition:"opacity .3s",
+                  cursor: p.caso_id ? "pointer" : "default" }}>
                   <div style={{ width:54, height:54, borderRadius:9, background:bg,
                     display:"flex", flexDirection:"column", alignItems:"center",
                     justifyContent:"center", flexShrink:0 }}>
@@ -2370,6 +2303,9 @@ function PantallaPlazos({ plazos, loading, marcarGestionado }) {
                       {p.cliente}
                     </div>
                     <div style={{ fontFamily:DS.sans, fontSize:12, color:DS.slate }}>{p.asunto}</div>
+                    {p.caso_id && (
+                      <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.gold, fontWeight:600, marginTop:3 }}>Ver caso →</div>
+                    )}
                   </div>
                   <div style={{ textAlign:"right", flexShrink:0, display:"flex",
                     flexDirection:"column", alignItems:"flex-end", gap:8 }}>
@@ -2380,7 +2316,7 @@ function PantallaPlazos({ plazos, loading, marcarGestionado }) {
                       </div>
                     </div>
                     {!p.gestionado && (
-                      <button onClick={()=>marcarGestionado(p.id)}
+                      <button onClick={(e)=>{ e.stopPropagation(); marcarGestionado(p.id); }}
                         style={{ padding:"4px 10px", borderRadius:5, border:`1px solid ${DS.green}`,
                           background:"transparent", cursor:"pointer", fontFamily:DS.sans,
                           fontSize:10, fontWeight:700, color:DS.green, whiteSpace:"nowrap" }}
@@ -2400,7 +2336,211 @@ function PantallaPlazos({ plazos, loading, marcarGestionado }) {
   );
 }
 
-// ─── PANTALLA: CLIENTES ───────────────────────────────────────────────────────
+// ─── PANTALLA: SISTEMA ────────────────────────────────────────────────────────
+// La verdad sobre los agentes: vida operativa (¿corre?) + calidad (¿responde bien?).
+function PantallaSistema({ agentesStatus, casos, lastUpdate }) {
+  const totalTipados = agentesStatus.reduce((s,a)=>s+a.tipados,0);
+  const totalCasos   = casos.length;
+  const confGlobal = (() => {
+    const c = casos.filter(x=>x.analisis.confianza>0);
+    return c.length ? c.reduce((s,x)=>s+x.analisis.confianza,0)/c.length : 0;
+  })();
+  const enAlerta = agentesStatus.filter(a =>
+    a.operativo==="dormido" || a.operativo==="sin_correr" || a.salud==="critico").length;
+
+  const porArea = [...new Set(casos.map(c=>c.area))].map(area => ({
+    area, count:casos.filter(c=>c.area===area).length, color:AREA_COLOR[area]||DS.slate,
+  })).sort((a,b)=>b.count-a.count);
+  const maxCount = Math.max(...porArea.map(p=>p.count),1);
+
+  const chipOp = (a) => {
+    if (a.operativo==="vivo")       return { txt:"Vivo",            c:DS.green, bg:DS.greenL };
+    if (a.operativo==="dormido")    return { txt:`Dormido · ${a.horas_desde_run}h`, c:DS.red, bg:DS.redL };
+    if (a.operativo==="sin_correr") return { txt:"No ha corrido",   c:DS.amber, bg:DS.amberL };
+    return { txt:"Sin actividad",   c:DS.slate, bg:DS.border };
+  };
+  const calidadTxt = (a) =>
+    a.salud==="sano" ? "Calidad sana" :
+    a.salud==="atencion" ? "Confianza baja" :
+    a.salud==="critico" ? "Calidad crítica" : "Sin confianza medida";
+
+  return (
+    <div style={{ flex:1, overflowY:"auto", padding:"28px 32px", background:DS.bg }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:24 }}>
+        <div>
+          <h1 style={{ fontFamily:DS.serif, fontSize:28, fontWeight:700, color:DS.ink, margin:"0 0 4px" }}>Sistema</h1>
+          <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL, margin:0 }}>
+            Agentes A0–A7 · vida operativa y calidad en tiempo real desde Supabase
+          </p>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <div style={{ width:6, height:6, borderRadius:"50%", background:DS.green, boxShadow:`0 0 6px ${DS.green}` }}/>
+          <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL }}>
+            Realtime activo{lastUpdate && ` · sync ${lastUpdate.toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})}`}
+          </span>
+        </div>
+      </div>
+
+      {/* Cuatro números del sistema */}
+      <div style={{ display:"flex", gap:28, marginBottom:28 }}>
+        {[
+          { label:"Casos totales",    val:totalCasos,   color:DS.ink },
+          { label:"Análisis tipados", val:totalTipados, color:DS.purple },
+          { label:"Confianza global", val:`${Math.round(confGlobal*100)}%`,
+            color: confGlobal>=0.7?DS.green:confGlobal>=0.5?DS.amber:DS.red },
+          { label:"Agentes en alerta", val:enAlerta, color: enAlerta>0?DS.red:DS.green },
+        ].map(({label,val,color}) => (
+          <div key={label}>
+            <div style={{ fontFamily:DS.serif, fontSize:36, fontWeight:700, color, lineHeight:1 }}>{val}</div>
+            <div style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL, marginTop:4 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Agentes */}
+      <SectionLabel icon="⚙">Agentes</SectionLabel>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, marginBottom:28 }}>
+        {agentesStatus.map(ag => {
+          const op = chipOp(ag);
+          const alerta = ag.operativo==="dormido" || ag.operativo==="sin_correr" || ag.salud==="critico";
+          const borde = alerta ? op.c : DS.border;
+          return (
+            <div key={ag.id} style={{ background:DS.bgCard, border:`1px solid ${borde}`,
+              borderRadius:10, padding:"16px 18px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:34, height:34, borderRadius:7, background:DS.ink,
+                    border:`1px solid ${DS.goldLine}`, display:"flex", alignItems:"center",
+                    justifyContent:"center", flexShrink:0 }}>
+                    <span style={{ fontFamily:DS.mono, fontSize:11, fontWeight:700, color:DS.gold }}>{ag.id}</span>
+                  </div>
+                  <div>
+                    <div style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.ink }}>{ag.nombre}</div>
+                    <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL }}>
+                      {ag.ultimo_run
+                        ? `Última corrida hace ${timeAgo(ag.ultimo_run)}`
+                        : "Nunca ha corrido"}
+                      {ag.pendientes_area > 0 && ` · ${ag.pendientes_area} en cola`}
+                    </div>
+                  </div>
+                </div>
+                <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700, color:op.c,
+                  background:op.bg, padding:"3px 9px", borderRadius:4, whiteSpace:"nowrap" }}>{op.txt}</span>
+              </div>
+
+              {/* Calidad */}
+              {ag.conf_prom !== null
+                ? <ConfBar val={ag.conf_prom}/>
+                : <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, fontStyle:"italic" }}>
+                    Sin datos de confianza aún
+                  </div>}
+              <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, marginTop:6 }}>
+                {calidadTxt(ag)}
+                {ag.casos_total > 0 && ` · ${ag.casos_total} caso${ag.casos_total!==1?"s":""} · ${ag.escalados} escalado${ag.escalados!==1?"s":""} · ${ag.tipados} tipado${ag.tipados!==1?"s":""}`}
+              </div>
+
+              {alerta && (
+                <div style={{ marginTop:10, padding:"8px 12px", background:op.bg, borderRadius:7 }}>
+                  <span style={{ fontFamily:DS.sans, fontSize:11, color:op.c }}>
+                    {ag.operativo==="dormido"
+                      ? `⚑ ${ag.pendientes_area} caso(s) en cola y sin correr hace ${ag.horas_desde_run}h — revisar workflow n8n de esta área`
+                      : ag.operativo==="sin_correr"
+                        ? "⚠ Hay casos en cola pero el agente nunca ejecutó — verificar webhook/trigger"
+                        : "⚑ Confianza crítica o escalación alta — reforzar prompt y RAG del área"}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Distribución por área */}
+      <SectionLabel icon="↗">Casos por área</SectionLabel>
+      <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, padding:"20px 24px" }}>
+        {porArea.map(({ area, count, color }) => (
+          <div key={area} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+            <div style={{ width:22, height:22, borderRadius:4, background:color,
+              display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <span style={{ fontFamily:DS.sans, fontSize:9, fontWeight:800, color:"#fff" }}>{AREA_ICON[area]||"?"}</span>
+            </div>
+            <span style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink, width:90 }}>{area}</span>
+            <div style={{ flex:1, height:20, background:DS.bg, borderRadius:4, overflow:"hidden" }}>
+              <div style={{ width:`${(count/maxCount)*100}%`, height:"100%", background:color,
+                borderRadius:4, transition:"width .6s" }}/>
+            </div>
+            <span style={{ fontFamily:DS.sans, fontSize:12, fontWeight:700, color:DS.ink, minWidth:16 }}>{count}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Métricas de operación (fusionadas desde v3) */}
+      <div style={{ marginTop:28 }}>
+        <SectionLabel icon="↗">Métricas de operación</SectionLabel>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
+          {(() => {
+            const slaOk    = casos.filter(c=>slaInfo(c.sla_horas,c.horas_transcurridas).label!=="Vencido").length;
+            const slaRate  = casos.length ? Math.round((slaOk/casos.length)*100) : 0;
+            const cerrados = casos.filter(c=>c.estado==="CERRADO").length;
+            const conIA    = casos.filter(c=>c.analisis.resumen&&c.analisis.resumen.length>10).length;
+            return [
+              { label:"Tasa SLA en plazo", val:`${slaRate}%`, color:slaRate>=80?DS.green:DS.amber },
+              { label:"Casos cerrados",    val:cerrados,      color:DS.green },
+              { label:"Con análisis IA",   val:conIA,         color:DS.purple },
+            ];
+          })().map(({label,val,color}) => (
+            <div key={label} style={{ background:DS.bgCard, border:`1px solid ${DS.border}`,
+              borderRadius:10, padding:"16px 18px" }}>
+              <div style={{ fontFamily:DS.serif, fontSize:30, fontWeight:700, color, lineHeight:1 }}>{val}</div>
+              <div style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL, marginTop:5 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, padding:"20px 24px" }}>
+          <SectionLabel icon="⚙">Confianza por área</SectionLabel>
+          {porArea.map(({ area }) => {
+            const casosArea = casos.filter(c=>c.area===area&&c.analisis.confianza>0);
+            const confArea  = casosArea.length
+              ? casosArea.reduce((s,c)=>s+c.analisis.confianza,0)/casosArea.length : 0;
+            return (
+              <div key={area} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                <span style={{ fontFamily:DS.mono, fontSize:10, color:DS.gold, width:24, fontWeight:700 }}>{AREA_ICON[area]||"?"}</span>
+                <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.ink, flex:1 }}>{area}</span>
+                <div style={{ width:120 }}><ConfBar val={confArea} showLabel={false}/></div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+function LoginScreen() {
+  return (
+    <div style={{ display:"flex", height:"100vh", alignItems:"center", justifyContent:"center",
+      background:DS.bgSide, flexDirection:"column", gap:24 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+        <div style={{ width:48, height:48, background:"rgba(184,148,58,0.15)", borderRadius:10,
+          display:"flex", alignItems:"center", justifyContent:"center",
+          border:`1.5px solid ${DS.goldDim}` }}>
+          <span style={{ fontFamily:DS.serif, fontSize:26, fontWeight:700, color:DS.gold }}>P</span>
+        </div>
+        <div>
+          <div style={{ fontFamily:DS.serif, fontSize:22, fontWeight:700, color:"#FDFBF8" }}>
+            Pyme En Regla
+          </div>
+          <div style={{ fontFamily:DS.sans, fontSize:10, color:"rgba(255,255,255,0.3)",
+            letterSpacing:"0.12em", textTransform:"uppercase" }}>Panel Interno</div>
+        </div>
+      </div>
+      <SignIn />
+    </div>
+  );
+}
+
+// ─── PANTALLA: CLIENTES (rescatada de v3) ─────────────────────────────────────
 function PantallaClientes({ casos }) {
   const [sel,    setSel]    = useState(null);
   const [search, setSearch] = useState("");
@@ -2540,574 +2680,94 @@ function PantallaClientes({ casos }) {
   );
 }
 
-// ─── PANTALLA: MÉTRICAS ───────────────────────────────────────────────────────
-function PantallaMetricas({ casos }) {
-  const [periodo, setPeriodo] = useState("total");
-
-  const confProm  = casos.filter(c=>c.analisis.confianza>0).length
-    ? casos.filter(c=>c.analisis.confianza>0).reduce((s,c)=>s+c.analisis.confianza,0)
-      / casos.filter(c=>c.analisis.confianza>0).length
-    : 0;
-  const slaOk    = casos.filter(c=>slaInfo(c.sla_horas,c.horas_transcurridas).label!=="Vencido").length;
-  const slaRate  = casos.length ? Math.round((slaOk/casos.length)*100) : 0;
-  const cerrados = casos.filter(c=>c.estado==="CERRADO").length;
-  const conAnalisis = casos.filter(c=>c.analisis.resumen&&c.analisis.resumen.length>10).length;
-
-  const porArea = [...new Set(casos.map(c=>c.area))].map(area => ({
-    area, count:casos.filter(c=>c.area===area).length, color:AREA_COLOR[area]||DS.slate,
-  })).sort((a,b)=>b.count-a.count);
-  const maxCount = Math.max(...porArea.map(p=>p.count),1);
-
-  return (
-    <div style={{ flex:1, overflowY:"auto", padding:"28px 32px", background:DS.bg }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
-        <h1 style={{ fontFamily:DS.serif, fontSize:28, fontWeight:700, color:DS.ink, margin:0 }}>Métricas</h1>
-        <div style={{ display:"flex", gap:4 }}>
-          {[["semana","Esta semana"],["mes","Este mes"],["total","Total"]].map(([v,l]) => (
-            <button key={v} onClick={()=>setPeriodo(v)}
-              style={{ padding:"6px 14px", borderRadius:6,
-                border:`1px solid ${periodo===v?DS.gold:DS.border}`,
-                background:periodo===v?DS.goldFaint:"transparent", cursor:"pointer",
-                fontFamily:DS.sans, fontSize:11, fontWeight:periodo===v?700:400,
-                color:periodo===v?DS.gold:DS.slate }}>{l}</button>
-          ))}
-        </div>
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:24 }}>
-        {[
-          { label:"Total casos",       val:casos.length,             color:DS.ink },
-          { label:"Con análisis IA",   val:conAnalisis,              color:DS.purple },
-          { label:"Tasa SLA",          val:`${slaRate}%`,            color:slaRate>=80?DS.green:DS.amber },
-          { label:"Confianza media",   val:`${Math.round(confProm*100)}%`, color:confProm>=0.7?DS.green:DS.amber },
-        ].map(({ label, val, color }) => (
-          <div key={label} style={{ background:DS.bgCard, border:`1px solid ${DS.border}`,
-            borderRadius:10, padding:"20px 22px", borderTop:`3px solid ${color}` }}>
-            <div style={{ fontFamily:DS.serif, fontSize:42, fontWeight:700, color, lineHeight:1 }}>{val}</div>
-            <div style={{ fontFamily:DS.sans, fontSize:12, fontWeight:600, color:DS.ink, marginTop:6 }}>{label}</div>
+// ─── ERROR BOUNDARY ───────────────────────────────────────────────────────────
+class ErrorBoundary extends Component {
+  constructor(props){ super(props); this.state = { err:null }; }
+  static getDerivedStateFromError(err){ return { err }; }
+  componentDidCatch(err, info){ console.error("Pantalla falló:", err, info); }
+  render(){
+    if (this.state.err) {
+      return (
+        <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center",
+          flexDirection:"column", gap:12, background:DS.bg, padding:32 }}>
+          <span style={{ fontSize:40, color:DS.amber }}>⚠</span>
+          <div style={{ fontFamily:DS.serif, fontSize:20, fontWeight:700, color:DS.ink }}>Esta sección tuvo un problema</div>
+          <div style={{ fontFamily:DS.sans, fontSize:13, color:DS.slate, maxWidth:380, textAlign:"center", lineHeight:1.6 }}>
+            El resto del panel sigue funcionando. Reintenta o cambia de sección.
           </div>
-        ))}
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
-        <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, padding:"20px 24px" }}>
-          <SectionLabel icon="↗">Casos por área</SectionLabel>
-          {porArea.map(({ area, count, color }) => (
-            <div key={area} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
-              <div style={{ width:22, height:22, borderRadius:4, background:color,
-                display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <span style={{ fontFamily:DS.sans, fontSize:9, fontWeight:800, color:"#fff" }}>
-                  {AREA_ICON[area]||"?"}
-                </span>
-              </div>
-              <span style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink, width:80 }}>{area}</span>
-              <div style={{ flex:1, height:20, background:DS.bg, borderRadius:4, overflow:"hidden" }}>
-                <div style={{ width:`${(count/maxCount)*100}%`, height:"100%", background:color,
-                  borderRadius:4, transition:"width .6s" }}/>
-              </div>
-              <span style={{ fontFamily:DS.sans, fontSize:12, fontWeight:700, color:DS.ink, minWidth:16 }}>{count}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, padding:"20px 24px" }}>
-          <SectionLabel icon="⚙">Confianza por área</SectionLabel>
-          {porArea.map(({ area, count, color }) => {
-            const casosArea = casos.filter(c=>c.area===area&&c.analisis.confianza>0);
-            const confArea  = casosArea.length
-              ? casosArea.reduce((s,c)=>s+c.analisis.confianza,0)/casosArea.length : 0;
-            return (
-              <div key={area} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
-                <span style={{ fontFamily:DS.mono, fontSize:10, color:DS.gold, width:24, fontWeight:700 }}>
-                  {AREA_ICON[area]||"?"}
-                </span>
-                <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.ink, flex:1 }}>{area}</span>
-                <div style={{ width:100 }}><ConfBar val={confArea} showLabel={false}/></div>
-              </div>
-            );
-          })}
-          <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${DS.border}` }}>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-              <span style={{ fontFamily:DS.sans, fontSize:11, color:DS.slate }}>Cerrados</span>
-              <span style={{ fontFamily:DS.serif, fontSize:18, fontWeight:700, color:DS.green }}>{cerrados}</span>
-            </div>
-            <div style={{ height:4, background:DS.bg, borderRadius:2 }}>
-              <div style={{ width:`${casos.length?Math.round((cerrados/casos.length)*100):0}%`,
-                height:"100%", background:DS.green, borderRadius:2 }}/>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── PANTALLA: SISTEMA ────────────────────────────────────────────────────────
-// Vida operativa de agentes (¿corre?) + calidad (¿responde bien?) + conexiones.
-function PantallaSystem({ agentesStatus }) {
-  const enAlerta = agentesStatus.filter(a =>
-    a.operativo==="dormido" || a.operativo==="sin_correr" || a.salud==="critico").length;
-
-  const CONEXIONES = [
-    { nombre:"Supabase + pgvector",       estado:"ok",   detalle:"kwyicmnbquqpuoxmsxgt · São Paulo · RLS activo · Realtime on" },
-    { nombre:"n8n (workflows A0–A7)",     estado:"ok",   detalle:"n8n.srv1108143.hstgr.cloud · Hostinger VPS · 8 flujos activos" },
-    { nombre:"Claude Sonnet + Haiku",     estado:"ok",   detalle:"A0 Haiku (clasificación) · A1–A7 Sonnet (análisis)" },
-    { nombre:"OpenAI Embeddings",         estado:"ok",   detalle:"text-embedding-3-small · vectorización de documentos" },
-    { nombre:"Slack HITL",                estado:"ok",   detalle:"7 canales · #per-general · notificaciones activas" },
-    { nombre:"Gmail OAuth2",              estado:"ok",   detalle:"pymeenregla@gmail.com · envíos automáticos activos" },
-    { nombre:"Google Drive",              estado:"ok",   detalle:"Expedientes automáticos por caso · OAuth2 conectado" },
-    { nombre:"Clerk Auth",                estado:"warn", detalle:"Modo desarrollo — activar producción antes de abrir acceso" },
-  ];
-
-  const chipOp = (a) => {
-    if (a.operativo==="vivo")       return { txt:"Vivo",            c:DS.green, bg:DS.greenL };
-    if (a.operativo==="dormido")    return { txt:`Dormido · ${a.horas_desde_run}h`, c:DS.red, bg:DS.redL };
-    if (a.operativo==="sin_correr") return { txt:"No ha corrido",   c:DS.amber, bg:DS.amberL };
-    return { txt:"Sin actividad",   c:DS.slate, bg:DS.border };
-  };
-  const calidadTxt = (a) =>
-    a.salud==="sano" ? "Calidad sana" :
-    a.salud==="atencion" ? "Confianza baja" :
-    a.salud==="critico" ? "Calidad crítica" : "Sin confianza medida";
-
-  return (
-    <div style={{ flex:1, overflowY:"auto", padding:"28px 32px", background:DS.bg }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:8 }}>
-        <div>
-          <h1 style={{ fontFamily:DS.serif, fontSize:28, fontWeight:700, color:DS.ink, margin:"0 0 4px" }}>Sistema IA</h1>
-          <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL, margin:0 }}>
-            Agentes A0–A7 · vida operativa y calidad en tiempo real desde Supabase
-          </p>
-        </div>
-        <div style={{ textAlign:"right" }}>
-          <div style={{ fontFamily:DS.serif, fontSize:30, fontWeight:700,
-            color: enAlerta>0?DS.red:DS.green, lineHeight:1 }}>{enAlerta}</div>
-          <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL,
-            textTransform:"uppercase", letterSpacing:"0.08em" }}>Agentes en alerta</div>
-        </div>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, margin:"20px 0 24px" }}>
-        {agentesStatus.map(ag => {
-          const op = chipOp(ag);
-          const alerta = ag.operativo==="dormido" || ag.operativo==="sin_correr" || ag.salud==="critico";
-          const borde = alerta ? op.c : DS.border;
-          return (
-            <div key={ag.id} style={{ background:DS.bgCard, border:`1px solid ${borde}`,
-              borderRadius:10, padding:"16px 18px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:34, height:34, borderRadius:7, background:DS.ink,
-                    border:`1px solid ${DS.goldLine}`, display:"flex", alignItems:"center",
-                    justifyContent:"center", flexShrink:0 }}>
-                    <span style={{ fontFamily:DS.mono, fontSize:11, fontWeight:700, color:DS.gold }}>{ag.id}</span>
-                  </div>
-                  <div>
-                    <div style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.ink }}>{ag.nombre}</div>
-                    <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL }}>
-                      {ag.ultimo_run
-                        ? `Última corrida hace ${timeAgo(ag.ultimo_run)}`
-                        : "Nunca ha corrido"}
-                      {ag.pendientes_area > 0 && ` · ${ag.pendientes_area} en cola`}
-                    </div>
-                  </div>
-                </div>
-                <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700, color:op.c,
-                  background:op.bg, padding:"3px 9px", borderRadius:4, whiteSpace:"nowrap" }}>{op.txt}</span>
-              </div>
-
-              {ag.conf_prom !== null
-                ? <ConfBar val={ag.conf_prom}/>
-                : <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, fontStyle:"italic" }}>
-                    Sin datos de confianza aún
-                  </div>}
-              <div style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, marginTop:6 }}>
-                {calidadTxt(ag)}
-                {ag.casos_total > 0 && ` · ${ag.casos_total} caso${ag.casos_total!==1?"s":""} · ${ag.escalados} escalado${ag.escalados!==1?"s":""} · ${ag.tipados} tipado${ag.tipados!==1?"s":""}`}
-              </div>
-
-              {alerta && (
-                <div style={{ marginTop:10, padding:"8px 12px", background:op.bg, borderRadius:7 }}>
-                  <span style={{ fontFamily:DS.sans, fontSize:11, color:op.c }}>
-                    {ag.operativo==="dormido"
-                      ? `⚑ ${ag.pendientes_area} caso(s) en cola y sin correr hace ${ag.horas_desde_run}h — revisar workflow n8n de esta área`
-                      : ag.operativo==="sin_correr"
-                        ? "⚠ Hay casos en cola pero el agente nunca ejecutó — verificar webhook/trigger"
-                        : "⚑ Confianza crítica o escalación alta — reforzar prompt y RAG del área"}
-                  </span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, overflow:"hidden" }}>
-        <div style={{ padding:"16px 20px", borderBottom:`1px solid ${DS.border}` }}>
-          <SectionLabel icon="◈">Conexiones del sistema</SectionLabel>
-        </div>
-        {CONEXIONES.map((c,i) => (
-          <div key={c.nombre} style={{ padding:"12px 20px",
-            borderBottom: i<CONEXIONES.length-1 ? `1px solid ${DS.border}` : "none",
-            background: c.estado==="warn" ? DS.amberXL : "transparent",
-            display:"flex", alignItems:"center", gap:12 }}>
-            <div style={{ width:7, height:7, borderRadius:"50%",
-              background: c.estado==="ok"?DS.green:DS.amber,
-              boxShadow:`0 0 5px ${c.estado==="ok"?DS.green:DS.amber}`, flexShrink:0 }}/>
-            <div style={{ flex:1 }}>
-              <div style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.ink }}>{c.nombre}</div>
-              <div style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL }}>{c.detalle}</div>
-            </div>
-            <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700,
-              color: c.estado==="ok"?DS.green:DS.amber,
-              background: c.estado==="ok"?DS.greenL:DS.amberL,
-              padding:"3px 8px", borderRadius:4 }}>
-              {c.estado==="ok" ? "Conectado" : "Pendiente"}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── PANTALLA: RAG ────────────────────────────────────────────────────────────
-const RAG_FUENTES = [
-  {id:"F01",nombre:"Ley 19.039 — Propiedad Industrial",area:"Marcas",chunks:412,estado:"ok",fecha:"2024-05-15",size:"1.2 MB"},
-  {id:"F02",nombre:"Guía INAPI Clases Niza 2023",area:"Marcas",chunks:287,estado:"ok",fecha:"2024-05-15",size:"890 KB"},
-  {id:"F03",nombre:"Código del Trabajo (actualizado)",area:"Laboral",chunks:1240,estado:"ok",fecha:"2024-05-20",size:"3.1 MB"},
-  {id:"F04",nombre:"Ley 21.327 — Modernización Laboral",area:"Laboral",chunks:183,estado:"ok",fecha:"2024-05-10",size:"540 KB"},
-  {id:"F05",nombre:"Código Tributario SII",area:"Tributario",chunks:892,estado:"ok",fecha:"2024-05-18",size:"2.4 MB"},
-  {id:"F06",nombre:"Circular SII N°8 2022",area:"Tributario",chunks:95,estado:"ok",fecha:"2024-04-30",size:"310 KB"},
-  {id:"F07",nombre:"Ley 20.659 — Empresas en un día",area:"Societario",chunks:134,estado:"ok",fecha:"2024-05-12",size:"420 KB"},
-  {id:"F08",nombre:"Manual SpA emprendesimple.cl",area:"Societario",chunks:88,estado:"warn",fecha:"2024-03-01",size:"280 KB"},
-  {id:"F09",nombre:"Ley 19.628 — Protección Datos",area:"Contratos",chunks:201,estado:"ok",fecha:"2024-05-22",size:"610 KB"},
-  {id:"F10",nombre:"Ley 19.496 — Consumidor",area:"Consumidor",chunks:318,estado:"ok",fecha:"2024-05-08",size:"950 KB"},
-  {id:"F11",nombre:"Template mandato INAPI v3",area:"Marcas",chunks:12,estado:"ok",fecha:"2024-06-01",size:"45 KB"},
-  {id:"F12",nombre:"Template contrato trabajo v6",area:"Laboral",chunks:18,estado:"ok",fecha:"2024-06-01",size:"62 KB"},
-  {id:"F13",nombre:"Template carta condonación SII v1",area:"Tributario",chunks:8,estado:"ok",fecha:"2024-05-15",size:"28 KB"},
-  {id:"F14",nombre:"Template escritura SpA v2",area:"Societario",chunks:22,estado:"ok",fecha:"2024-05-20",size:"78 KB"},
-  {id:"F15",nombre:"Template contrato servicios v5",area:"Contratos",chunks:31,estado:"ok",fecha:"2024-06-01",size:"95 KB"},
-  {id:"F16",nombre:"Jurisprudencia DT 2023 fuero maternal",area:"Laboral",chunks:156,estado:"ok",fecha:"2024-04-15",size:"480 KB"},
-  {id:"F17",nombre:"Template NDA internacional v2",area:"Contratos",chunks:14,estado:"warn",fecha:"2024-02-10",size:"38 KB"},
-];
-
-function PantallaRAG() {
-  const [filtroArea, setFiltroArea] = useState("TODAS");
-  const [busqueda,   setBusqueda]   = useState("");
-  const areas = ["TODAS", ...[...new Set(RAG_FUENTES.map(f=>f.area))]];
-  const totalChunks = RAG_FUENTES.reduce((s,f)=>s+f.chunks,0);
-  const porArea = [...new Set(RAG_FUENTES.map(f=>f.area))].map(a => ({
-    area:a, chunks:RAG_FUENTES.filter(f=>f.area===a).reduce((s,f)=>s+f.chunks,0),
-    fuentes:RAG_FUENTES.filter(f=>f.area===a).length, color:AREA_COLOR[a]||DS.slate,
-  }));
-  const filtered = RAG_FUENTES.filter(f => {
-    const okA = filtroArea==="TODAS"||f.area===filtroArea;
-    const q   = busqueda.toLowerCase();
-    const okB = !q||f.nombre.toLowerCase().includes(q)||f.area.toLowerCase().includes(q);
-    return okA&&okB;
-  });
-
-  return (
-    <div style={{ flex:1, overflowY:"auto", padding:"28px 32px", background:DS.bg }}>
-      <h1 style={{ fontFamily:DS.serif, fontSize:28, fontWeight:700, color:DS.ink, margin:"0 0 4px" }}>RAG y Fuentes</h1>
-      <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL, margin:"0 0 24px" }}>
-        Base de conocimiento legal vectorial — {RAG_FUENTES.length} fuentes · {totalChunks.toLocaleString("es-CL")} chunks
-      </p>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:24 }}>
-        {[
-          { label:"Fuentes indexadas", val:RAG_FUENTES.length, color:DS.blue },
-          { label:"Chunks totales", val:totalChunks.toLocaleString("es-CL"), color:DS.purple },
-          { label:"Templates", val:34, color:DS.gold },
-          { label:"Alertas", val:RAG_FUENTES.filter(f=>f.estado==="warn").length, color:DS.amber },
-        ].map(({ label, val, color }) => (
-          <div key={label} style={{ background:DS.bgCard, border:`1px solid ${DS.border}`,
-            borderRadius:10, padding:"16px 18px" }}>
-            <div style={{ fontFamily:DS.sans, fontSize:9, fontWeight:700, color:DS.slateL,
-              textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>{label}</div>
-            <div style={{ fontFamily:DS.serif, fontSize:28, fontWeight:700, color }}>{val}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10,
-        padding:"20px 24px", marginBottom:20 }}>
-        <SectionLabel icon="↗">Distribución por área</SectionLabel>
-        {porArea.sort((a,b)=>b.chunks-a.chunks).map(({ area, chunks, fuentes, color }) => (
-          <div key={area} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
-            <span style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink, width:100 }}>{area}</span>
-            <div style={{ flex:1, height:22, background:DS.bg, borderRadius:4, overflow:"hidden" }}>
-              <div style={{ width:`${(chunks/totalChunks)*100}%`, height:"100%", background:color,
-                borderRadius:4, transition:"width .6s" }}/>
-            </div>
-            <span style={{ fontFamily:DS.sans, fontSize:11, fontWeight:700, color:DS.ink,
-              minWidth:60, textAlign:"right" }}>{chunks.toLocaleString("es-CL")}</span>
-            <span style={{ fontFamily:DS.sans, fontSize:10, color:DS.slateL, minWidth:70 }}>
-              {fuentes} fuente{fuentes!==1?"s":""}
-            </span>
-          </div>
-        ))}
-      </div>
-      <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:14, flexWrap:"wrap" }}>
-        <div style={{ position:"relative", flex:1, maxWidth:320 }}>
-          <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)",
-            fontSize:13, color:DS.slateL }}>⌕</span>
-          <input value={busqueda} onChange={e=>setBusqueda(e.target.value)}
-            placeholder="Buscar fuente…"
-            style={{ width:"100%", paddingLeft:30, height:34, background:DS.bgCard,
-              border:`1px solid ${DS.border}`, borderRadius:7, boxSizing:"border-box",
-              fontFamily:DS.sans, fontSize:12, color:DS.ink, outline:"none" }}
-            onFocus={e=>e.target.style.borderColor=DS.gold}
-            onBlur={e=>e.target.style.borderColor=DS.border}/>
-        </div>
-        {areas.map(a => (
-          <button key={a} onClick={()=>setFiltroArea(a)}
-            style={{ padding:"5px 12px", borderRadius:6,
-              border:`1px solid ${filtroArea===a?DS.gold:DS.border}`,
-              background:filtroArea===a?DS.goldFaint:"transparent", cursor:"pointer",
-              fontFamily:DS.sans, fontSize:11, fontWeight:filtroArea===a?700:400,
-              color:filtroArea===a?DS.gold:DS.slate }}>{a}</button>
-        ))}
-      </div>
-      <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, overflow:"hidden" }}>
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse" }}>
-            <thead>
-              <tr style={{ background:DS.bg }}>
-                {["ID","Nombre","Área","Chunks","Tamaño","Actualización","Estado"].map(h=>(
-                  <th key={h} style={{ padding:"10px 14px", fontFamily:DS.sans, fontSize:10, fontWeight:700,
-                    color:DS.slateL, textTransform:"uppercase", letterSpacing:"0.08em",
-                    textAlign:"left", borderBottom:`1px solid ${DS.border}`, whiteSpace:"nowrap" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((f,i)=>(
-                <tr key={f.id} style={{ borderBottom:`1px solid ${DS.border}`,
-                  background:i%2===0?DS.bgCard:DS.bg }}>
-                  <td style={{ padding:"10px 14px", fontFamily:DS.sans, fontSize:11, color:DS.slateL }}>{f.id}</td>
-                  <td style={{ padding:"10px 14px", fontFamily:DS.sans, fontSize:12, fontWeight:600,
-                    color:DS.ink, maxWidth:240 }}>{f.nombre}</td>
-                  <td style={{ padding:"10px 14px" }}>
-                    <span style={{ background:`${AREA_COLOR[f.area]||DS.slate}20`,
-                      color:AREA_COLOR[f.area]||DS.slate, padding:"2px 8px",
-                      borderRadius:4, fontFamily:DS.sans, fontSize:10, fontWeight:700 }}>{f.area}</span>
-                  </td>
-                  <td style={{ padding:"10px 14px", fontFamily:DS.serif, fontSize:16,
-                    fontWeight:700, color:DS.ink }}>{f.chunks.toLocaleString("es-CL")}</td>
-                  <td style={{ padding:"10px 14px", fontFamily:DS.sans, fontSize:11, color:DS.slateL }}>{f.size}</td>
-                  <td style={{ padding:"10px 14px", fontFamily:DS.sans, fontSize:11, color:DS.slateL }}>
-                    {new Date(f.fecha).toLocaleDateString("es-CL")}
-                  </td>
-                  <td style={{ padding:"10px 14px" }}>
-                    {f.estado==="ok"
-                      ? <span style={{ display:"inline-flex", alignItems:"center", gap:4,
-                          background:DS.greenL, color:DS.green, padding:"2px 8px",
-                          borderRadius:4, fontFamily:DS.sans, fontSize:10, fontWeight:700 }}>✓ OK</span>
-                      : <span style={{ display:"inline-flex", alignItems:"center", gap:4,
-                          background:DS.amberL, color:DS.amber, padding:"2px 8px",
-                          borderRadius:4, fontFamily:DS.sans, fontSize:10, fontWeight:700 }}>⚠ Revisar</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── PANTALLA: CONFIGURACIÓN ──────────────────────────────────────────────────
-function PantallaConfig({ showToast }) {
-  const [umbral,      setUmbral]      = useState(65);
-  const [slaDefault,  setSla]         = useState(48);
-  const [notifSlack,  setSlack]       = useState(true);
-  const [notifEmail,  setEmail]       = useState(true);
-  const [retro,       setRetro]       = useState(true);
-
-  const Toggle = ({ val, set, label }) => (
-    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-      <button onClick={()=>set(!val)}
-        style={{ width:44, height:24, borderRadius:12, border:"none",
-          background:val?DS.green:DS.slateXL, cursor:"pointer", position:"relative",
-          transition:"background .2s", flexShrink:0 }}>
-        <div style={{ width:18, height:18, borderRadius:"50%", background:"#fff",
-          position:"absolute", top:3, left:val?23:3, transition:"left .2s" }}/>
-      </button>
-      <span style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink }}>{label}</span>
-    </div>
-  );
-
-  const CONEXIONES = [
-    { nombre:"Supabase (PostgreSQL + pgvector)", estado:"ok", detalle:"kwyicmnbquqpuoxmsxgt.supabase.co · São Paulo · Realtime activo" },
-    { nombre:"n8n (Orquestador)",               estado:"ok", detalle:"n8n.srv1108143.hstgr.cloud · Hostinger VPS 8GB · A0–A7 activos" },
-    { nombre:"Clerk (Autenticación)",           estado:"warn",detalle:"Development mode activo — pendiente activar producción" },
-    { nombre:"Slack (Notificaciones HITL)",     estado:"ok", detalle:"pyme-en-regla.slack.com · 7 canales activos" },
-    { nombre:"Gmail (Confirmaciones)",          estado:"ok", detalle:"OAuth2 per-n8n-496803 · Envíos automáticos activos" },
-    { nombre:"OpenAI (Embeddings)",             estado:"ok", detalle:"text-embedding-3-small · Vectorización activa" },
-    { nombre:"Claude (Agentes IA)",             estado:"ok", detalle:"claude-haiku (A0) · claude-sonnet (A1–A7)" },
-  ];
-
-  return (
-    <div style={{ flex:1, overflowY:"auto", padding:"28px 32px", background:DS.bg }}>
-      <h1 style={{ fontFamily:DS.serif, fontSize:28, fontWeight:700, color:DS.ink, margin:"0 0 4px" }}>Configuración</h1>
-      <p style={{ fontFamily:DS.sans, fontSize:13, color:DS.slateL, margin:"0 0 24px" }}>
-        Parámetros del sistema, usuarios y conexiones
-      </p>
-
-      {/* Parámetros */}
-      <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10,
-        padding:"20px 24px", marginBottom:20 }}>
-        <SectionLabel icon="⚙">Parámetros del sistema</SectionLabel>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20 }}>
-          <div>
-            <label style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700, color:DS.slateL,
-              textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:8 }}>
-              Umbral HITL (confianza mínima)
-            </label>
-            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-              <input type="range" min={30} max={95} value={umbral}
-                onChange={e=>setUmbral(Number(e.target.value))}
-                style={{ flex:1, accentColor:DS.gold }}/>
-              <span style={{ fontFamily:DS.serif, fontSize:22, fontWeight:700, color:DS.ink, minWidth:42 }}>
-                {umbral}%
-              </span>
-            </div>
-          </div>
-          <div>
-            <label style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700, color:DS.slateL,
-              textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:8 }}>
-              SLA por defecto (horas)
-            </label>
-            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-              <input type="range" min={6} max={120} step={6} value={slaDefault}
-                onChange={e=>setSla(Number(e.target.value))}
-                style={{ flex:1, accentColor:DS.gold }}/>
-              <span style={{ fontFamily:DS.serif, fontSize:22, fontWeight:700, color:DS.ink, minWidth:42 }}>
-                {slaDefault}h
-              </span>
-            </div>
-          </div>
-        </div>
-        <div style={{ display:"flex", gap:24, marginBottom:20, flexWrap:"wrap" }}>
-          <Toggle val={notifSlack} set={setSlack} label="Notificaciones Slack HITL"/>
-          <Toggle val={notifEmail} set={setEmail} label="Notificaciones Email cliente"/>
-          <Toggle val={retro}      set={setRetro} label="Retro-RAG automático al cerrar"/>
-        </div>
-        <div style={{ display:"flex", justifyContent:"flex-end" }}>
-          <button onClick={()=>showToast("Configuración guardada ✓","ok")}
-            style={{ padding:"9px 22px", borderRadius:7, border:"none", background:DS.ink,
+          <button onClick={()=>this.setState({ err:null })}
+            style={{ padding:"9px 20px", borderRadius:7, border:"none", background:DS.ink,
               cursor:"pointer", fontFamily:DS.sans, fontSize:13, fontWeight:700, color:DS.gold }}>
-            Guardar cambios
+            Reintentar
           </button>
         </div>
-      </div>
-
-      {/* Atajos de teclado */}
-      <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10,
-        padding:"20px 24px", marginBottom:20 }}>
-        <SectionLabel icon="◧">Atajos de teclado</SectionLabel>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8 }}>
-          {[
-            ["⌘K","Buscar y navegar (Command Palette)"],
-            ["N","Nuevo caso"],
-            ["1–8","Cambiar sección"],
-            ["J / K","Navegar lista de casos"],
-            ["A","Aprobar caso seleccionado"],
-            ["E","Escalar caso"],
-            ["R","Rechazar / devolver a HITL"],
-            ["I","Solicitar información al cliente"],
-            ["F","Modo enfoque (oculta la lista)"],
-            ["esc","Salir / cerrar modal"],
-          ].map(([k,l]) => (
-            <div key={k} style={{ display:"flex", alignItems:"center", gap:10,
-              padding:"8px 12px", background:DS.bg, borderRadius:7 }}>
-              <Kbd>{k}</Kbd>
-              <span style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink }}>{l}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Conexiones */}
-      <div style={{ background:DS.bgCard, border:`1px solid ${DS.border}`, borderRadius:10, overflow:"hidden" }}>
-        <div style={{ padding:"16px 20px", borderBottom:`1px solid ${DS.border}` }}>
-          <SectionLabel icon="◈">Conexiones del sistema</SectionLabel>
-        </div>
-        <div style={{ display:"flex", flexDirection:"column" }}>
-          {CONEXIONES.map((c,i) => (
-            <div key={c.nombre} style={{ padding:"12px 20px",
-              borderBottom: i<CONEXIONES.length-1 ? `1px solid ${DS.border}` : "none",
-              background: c.estado==="warn" ? DS.amberXL : "transparent",
-              display:"flex", alignItems:"center", gap:12 }}>
-              <div style={{ width:7, height:7, borderRadius:"50%",
-                background: c.estado==="ok" ? DS.green : DS.amber,
-                boxShadow:`0 0 5px ${c.estado==="ok"?DS.green:DS.amber}`, flexShrink:0 }}/>
-              <div style={{ flex:1 }}>
-                <div style={{ fontFamily:DS.sans, fontSize:13, fontWeight:600, color:DS.ink }}>{c.nombre}</div>
-                <div style={{ fontFamily:DS.sans, fontSize:11, color:DS.slateL }}>{c.detalle}</div>
-              </div>
-              <span style={{ fontFamily:DS.sans, fontSize:10, fontWeight:700,
-                color: c.estado==="ok" ? DS.green : DS.amber,
-                background: c.estado==="ok" ? DS.greenL : DS.amberL,
-                padding:"3px 8px", borderRadius:4 }}>
-                {c.estado==="ok" ? "Conectado" : "Pendiente"}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+      );
+    }
+    return this.props.children;
+  }
 }
 
-// ─── PANTALLA DE LOGIN ────────────────────────────────────────────────────────
-function LoginScreen() {
+// ─── OVERLAY DE ATAJOS (tecla ?) ──────────────────────────────────────────────
+function AtajosOverlay({ open, onClose }) {
+  if (!open) return null;
+  const grupos = [
+    ["Navegación", [["1–6","Cambiar sección"],["⌘K","Buscar / ir a"],["N","Nuevo caso"],["?","Este panel"]]],
+    ["Revisar casos", [["A","Aprobar"],["E","Escalar"],["R","Rechazar"],["I","Pedir info al cliente"],["J / K","Anterior / siguiente"],["F","Modo enfoque"],["esc","Cerrar / salir"]]],
+  ];
   return (
-    <div style={{ display:"flex", height:"100vh", alignItems:"center", justifyContent:"center",
-      background:DS.bgSide, flexDirection:"column", gap:24 }}>
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
-        <div style={{ width:48, height:48, background:"rgba(184,148,58,0.15)", borderRadius:10,
-          display:"flex", alignItems:"center", justifyContent:"center",
-          border:`1.5px solid ${DS.goldDim}` }}>
-          <span style={{ fontFamily:DS.serif, fontSize:26, fontWeight:700, color:DS.gold }}>P</span>
+    <div onClick={onClose}
+      style={{ position:"fixed", inset:0, background:"rgba(12,27,46,0.45)", backdropFilter:"blur(2px)",
+        zIndex:9500, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{ background:DS.bgCard, borderRadius:14, width:460, maxWidth:"92vw",
+          boxShadow:"0 24px 64px rgba(0,0,0,.35)", overflow:"hidden", animation:"cmdIn .15s ease" }}>
+        <div style={{ padding:"18px 24px", borderBottom:`1px solid ${DS.border}`,
+          display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span style={{ fontFamily:DS.serif, fontSize:19, fontWeight:700, color:DS.ink }}>Atajos de teclado</span>
+          <button onClick={onClose} style={{ border:"none", background:"transparent",
+            cursor:"pointer", fontSize:18, color:DS.slateL }}>✕</button>
         </div>
-        <div>
-          <div style={{ fontFamily:DS.serif, fontSize:22, fontWeight:700, color:"#FDFBF8" }}>
-            Pyme En Regla
-          </div>
-          <div style={{ fontFamily:DS.sans, fontSize:10, color:"rgba(255,255,255,0.3)",
-            letterSpacing:"0.12em", textTransform:"uppercase" }}>Panel Interno</div>
+        <div style={{ padding:"18px 24px" }}>
+          {grupos.map(([titulo, filas]) => (
+            <div key={titulo} style={{ marginBottom:18 }}>
+              <SectionLabel>{titulo}</SectionLabel>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8 }}>
+                {filas.map(([k,l]) => (
+                  <div key={k} style={{ display:"flex", alignItems:"center", gap:10,
+                    padding:"7px 10px", background:DS.bg, borderRadius:7 }}>
+                    <Kbd>{k}</Kbd>
+                    <span style={{ fontFamily:DS.sans, fontSize:12, color:DS.ink }}>{l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-      <SignIn />
     </div>
   );
 }
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function PERApp() {
-  const [nav,           setNav]           = useState("home");
-  const [toast,         setToast]         = useState(null);
-  const [modalNuevo,    setModalNuevo]    = useState(false);
-  const [collapsed,     setCollapsed]     = useState(false);
-  const [cmdOpen,       setCmdOpen]       = useState(false);
-  const [selIdExterno,  setSelIdExterno]  = useState(null);
-  const [sesion,        setSesion]        = useState({ aprobados:0, escalados:0, rechazados:0 });
+  const [nav,          setNav]          = useState("hoy");
+  const [toast,        setToast]        = useState(null);
+  const [modalNuevo,   setModalNuevo]   = useState(false);
+  const [collapsed,    setCollapsed]    = useState(false);
+  const [cmdOpen,      setCmdOpen]      = useState(false);
+  const [selIdExterno, setSelIdExterno] = useState(null);
+  const [sesion,       setSesion]       = useState({ aprobados:0, escalados:0, rechazados:0 });
+  const [atajos,       setAtajos]       = useState(false);
 
-  // Motor Supabase
   const {
     casos, loading, error, lastUpdate, fetchCasos,
     actualizarEstado, actualizarNota, actualizarDatos, eliminarCaso, cerrarCaso,
   } = useCasosSupabase();
 
-  // Plazos Supabase
   const { plazos, loading:loadingPlazos, marcarGestionado } = usePlazosSupabase();
-
-  // Estado real de agentes desde Supabase
   const agentesStatus = useAgentesStatus();
 
-  // Fuentes
   useEffect(() => {
-    // Google Fonts — Cormorant Garamond + Outfit + JetBrains Mono
     if (!document.getElementById("per-fonts")) {
       const l = document.createElement("link");
       l.id = "per-fonts";
@@ -3117,7 +2777,6 @@ export default function PERApp() {
     }
   }, []);
 
-  // Atajos globales
   useEffect(() => {
     function onKey(e) {
       if ((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="k") {
@@ -3125,12 +2784,10 @@ export default function PERApp() {
       }
       if (["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return;
       if (cmdOpen||modalNuevo) return;
-      const navMap = {
-        "1":"home","2":"hitl","3":"casos","4":"plazos",
-        "5":"clientes","6":"metricas","7":"sistema","8":"rag",
-      };
+      const navMap = { "1":"hoy","2":"revisar","3":"casos","4":"agenda","5":"sistema","6":"clientes" };
       if (navMap[e.key]) { e.preventDefault(); setNav(navMap[e.key]); }
       if (e.key.toLowerCase()==="n") { e.preventDefault(); setModalNuevo(true); }
+      if (e.key==="?") { e.preventDefault(); setAtajos(a=>!a); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -3139,6 +2796,11 @@ export default function PERApp() {
   function showToast(msg, tipo="ok", onUndo=null) {
     setToast({ msg, tipo, onUndo });
     setTimeout(() => setToast(t => (t&&t.msg===msg?null:t)), onUndo ? 6000 : 3400);
+  }
+
+  function abrirCaso(uuid) {
+    setSelIdExterno(uuid);
+    setNav("revisar");
   }
 
   async function handleNuevoCaso(form) {
@@ -3152,7 +2814,7 @@ export default function PERApp() {
       contacto_tel:     form.telefono,
       area:             form.area,
       kit:              form.kit,
-      canal:            form.urgencia==="urgente"?"presencial":"presencial",
+      canal:            "presencial",
       prioridad:        form.urgencia==="urgente"?"ALTA":"MEDIA",
       asunto:           form.consulta.substring(0,120),
       consulta_raw:     form.consulta,
@@ -3163,16 +2825,16 @@ export default function PERApp() {
       ingresado_at:     new Date().toISOString(),
     });
     if (e) { showToast("Error al crear caso","err"); return; }
-    showToast(`Caso ${folio} creado → Cola HITL ✓`,"ok");
+    showToast(`Caso ${folio} creado`,"ok");
     setModalNuevo(false);
-    setNav("hitl");
+    setNav("revisar");
     await fetchCasos();
   }
 
-  const hitlCount   = casos.filter(c=>c.estado==="HITL"||c.estado==="ESCALADO").length;
-  const plazosCount = plazos.filter(p=>p.dias<=3&&!p.gestionado).length;
+  const revisarCount  = casos.filter(c=>c.estado==="HITL"||c.estado==="ESCALADO").length;
+  const agendaCount   = plazos.filter(p=>p.dias<=3&&!p.gestionado).length;
+  const sistemaAlerta = agentesStatus.some(a=>a.estado==="err");
 
-  // Pantalla de dashboard
   const dashboard = (
     <div style={{ display:"flex", height:"100vh", background:DS.bg,
       fontFamily:DS.sans, overflow:"hidden", position:"relative" }}>
@@ -3191,21 +2853,22 @@ export default function PERApp() {
       `}</style>
 
       <Toast toast={toast} clear={()=>setToast(null)}/>
+      <AtajosOverlay open={atajos} onClose={()=>setAtajos(false)}/>
       <CommandPalette open={cmdOpen} onClose={()=>setCmdOpen(false)}
         casos={casos} setNav={setNav} selectCaso={id=>setSelIdExterno(id)}/>
       {modalNuevo && <ModalNuevoCaso onSave={handleNuevoCaso} onClose={()=>setModalNuevo(false)}/>}
 
-      <Sidebar nav={nav} setNav={setNav} hitlCount={hitlCount} plazosCount={plazosCount}
-        agentesErr={agentesStatus.filter(a=>a.estado!=="ok").length}
+      <Sidebar nav={nav} setNav={setNav}
+        revisarCount={revisarCount} agendaCount={agendaCount} sistemaAlerta={sistemaAlerta}
         collapsed={collapsed} setCollapsed={setCollapsed}
         onCmd={()=>setCmdOpen(true)} lastUpdate={lastUpdate}/>
 
       <div style={{ display:"flex", flexDirection:"column", flex:1, overflow:"hidden", minWidth:0 }}>
-        <TopBar nav={nav} casos={casos} onNuevoCaso={()=>setModalNuevo(true)}
-          sesion={sesion} onRefresh={fetchCasos}/>
+        <TopBar nav={nav} sesion={sesion}
+          onNuevoCaso={()=>setModalNuevo(true)} onRefresh={fetchCasos}/>
+        <ErrorBoundary>
         <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
 
-          {/* Loading state */}
           {loading && (
             <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center",
               flexDirection:"column", gap:12, background:DS.bg }}>
@@ -3221,7 +2884,6 @@ export default function PERApp() {
             </div>
           )}
 
-          {/* Error state */}
           {!loading && error && (
             <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center",
               flexDirection:"column", gap:12 }}>
@@ -3235,9 +2897,10 @@ export default function PERApp() {
             </div>
           )}
 
-          {/* Screens */}
-          {!loading && !error && nav==="home"     && <PantallaHome casos={casos} plazos={plazos} setNav={setNav} agentesStatus={agentesStatus}/>}
-          {!loading && !error && nav==="hitl"     && (
+          {!loading && !error && nav==="hoy" && (
+            <PantallaHoy casos={casos} plazos={plazos} setNav={setNav} abrirCaso={abrirCaso}/>
+          )}
+          {!loading && !error && nav==="revisar" && (
             <PantallaCasos casos={casos} actualizarEstado={actualizarEstado}
               actualizarNota={actualizarNota} actualizarDatos={actualizarDatos}
               eliminarCaso={eliminarCaso} cerrarCaso={cerrarCaso}
@@ -3245,7 +2908,7 @@ export default function PERApp() {
               sesion={sesion} setSesion={setSesion}
               selIdExterno={selIdExterno} setSelIdExterno={setSelIdExterno}/>
           )}
-          {!loading && !error && nav==="casos"    && (
+          {!loading && !error && nav==="casos" && (
             <PantallaCasos casos={casos} actualizarEstado={actualizarEstado}
               actualizarNota={actualizarNota} actualizarDatos={actualizarDatos}
               eliminarCaso={eliminarCaso} cerrarCaso={cerrarCaso}
@@ -3253,15 +2916,15 @@ export default function PERApp() {
               sesion={sesion} setSesion={setSesion}
               selIdExterno={selIdExterno} setSelIdExterno={setSelIdExterno}/>
           )}
-          {!loading && !error && nav==="plazos"   && (
-            <PantallaPlazos plazos={plazos} loading={loadingPlazos} marcarGestionado={marcarGestionado}/>
+          {!loading && !error && nav==="agenda" && (
+            <PantallaAgenda plazos={plazos} loading={loadingPlazos} marcarGestionado={marcarGestionado} abrirCaso={abrirCaso}/>
+          )}
+          {!loading && !error && nav==="sistema" && (
+            <PantallaSistema agentesStatus={agentesStatus} casos={casos} lastUpdate={lastUpdate}/>
           )}
           {!loading && !error && nav==="clientes" && <PantallaClientes casos={casos}/>}
-          {!loading && !error && nav==="metricas" && <PantallaMetricas casos={casos}/>}
-          {!loading && !error && nav==="sistema"  && <PantallaSystem agentesStatus={agentesStatus}/>}
-          {!loading && !error && nav==="rag"      && <PantallaRAG/>}
-          {!loading && !error && nav==="config"   && <PantallaConfig showToast={showToast}/>}
         </div>
+        </ErrorBoundary>
       </div>
     </div>
   );
