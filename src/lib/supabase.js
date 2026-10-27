@@ -7,10 +7,19 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = 'https://kwyicmnbquqpuoxmsxgt.supabase.co'
 const supabaseKey = 'sb_publishable_om3LXIMnPP1Zmznix4Di6Q_7htjvZkz'
 
+// Espera hasta 5 segundos a que Clerk termine de cargar la sesión,
+// para que la primera consulta al abrir el panel ya vaya autenticada.
+async function esperarClerk() {
+  for (let i = 0; i < 50; i++) {
+    if (window.Clerk && window.Clerk.loaded) return
+    await new Promise((r) => setTimeout(r, 100))
+  }
+}
+
 export const supabase = createClient(supabaseUrl, supabaseKey, {
-  // Entrega a Supabase el token de sesión vigente de Clerk (null si no hay sesión).
   accessToken: async () => {
     try {
+      await esperarClerk()
       return (await window.Clerk?.session?.getToken()) ?? null
     } catch {
       return null
