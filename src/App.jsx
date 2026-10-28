@@ -275,6 +275,7 @@ function useCasosSupabase() {
       .from("casos")
       .update({ nota_abogado: nota, ultima_accion_at: new Date().toISOString() })
       .eq("id", uuid);
+    if (!e) setCasos(p => p.map(c => c.uuid === uuid ? { ...c, nota_abogado: nota } : c));
     return e;
   }, []);
 
@@ -1280,6 +1281,8 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
     setGN(false);
   }
   function handleAccion(tipo) {
+    if (tipo === "aprobar" && nota.trim() &&
+        !window.confirm("Se enviará esta respuesta al cliente, firmada por ti:\n\n" + nota.trim().slice(0, 600) + "\n\n¿Aprobar y enviar?")) return;
     onAccion(caso.uuid, tipo, { nota, leccion });
   }
 
@@ -1596,9 +1599,9 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
 
             {!cerrado && (
               <div style={{ marginTop:18 }}>
-                <SectionLabel icon="✎">Nota interna del abogado</SectionLabel>
+                <SectionLabel icon="✉">Respuesta para el cliente</SectionLabel>
                 <textarea value={nota} onChange={e=>setNota(e.target.value)}
-                  placeholder="Observaciones, correcciones al análisis, instrucciones internas…"
+                  placeholder="Lo que escribas aquí se envía al cliente, firmado por ti, al presionar Aprobar. Si lo dejas vacío, no se envía nada."
                   style={{ width:"100%", minHeight:80, background:DS.bg, border:`1px solid ${DS.border}`,
                     borderRadius:8, boxSizing:"border-box", padding:"10px 13px",
                     fontFamily:DS.sans, fontSize:13, color:DS.ink, resize:"vertical",
@@ -2045,9 +2048,9 @@ function PantallaCasos({
       });
       if (r.ok) {
         await actualizarEstado(uuid,"CERRADO");
-        showToast("Aprobado — email enviado al cliente","ok");
+        showToast(r.data?.mensaje || "Caso aprobado","ok");
         if (soloHITL) autoAvanzar(uuid);
-      } else showToast("Error al aprobar","err");
+      } else showToast(r.error || "Error al aprobar","err");
       return;
     }
 
