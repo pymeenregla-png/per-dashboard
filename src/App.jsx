@@ -10,23 +10,23 @@ import { useState, useEffect, useCallback, useRef, useMemo, Component } from "re
 import { SignIn, SignedIn, SignedOut, useClerk } from "@clerk/clerk-react";
 import { supabase } from "./lib/supabase";
 
-// ─── WEBHOOKS n8n ─────────────────────────────────────────────────────────────
-const WH = {
-  procesar: "https://n8n.srv1108143.hstgr.cloud/webhook/per-procesar-caso",
-  aprobar:  "https://n8n.srv1108143.hstgr.cloud/webhook/per-aprobar",
-  escalar:  "https://n8n.srv1108143.hstgr.cloud/webhook/per-escalar",
-  cerrar:   "https://n8n.srv1108143.hstgr.cloud/webhook/per-cerrar",
-  info:     "https://n8n.srv1108143.hstgr.cloud/webhook/per-solicitar-info",
-};
+// ─── ACCIONES n8n · una sola puerta, autenticada con la sesión de Clerk ───────
+const N8N_ACCION = "https://n8n.srv1108143.hstgr.cloud/webhook/per-accion";
+const WH = { procesar: "procesar", aprobar: "aprobar", escalar: "escalar", cerrar: "cerrar", info: "info" };
 
-async function dispararWebhook(url, payload) {
+async function dispararWebhook(accion, payload) {
   try {
-    const r = await fetch(url, {
+    const token = await window.Clerk?.session?.getToken();
+    if (!token) return { ok: false, status: 401, error: "Sesión expirada. Vuelve a iniciar sesión." };
+    const r = await fetch(N8N_ACCION, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ accion, ...payload }),
     });
-    return { ok: r.ok, status: r.status };
+    let data = null;
+    try { data = await r.json(); } catch { /* respuesta sin cuerpo */ }
+    if (!r.ok) console.warn("[PER] Acción rechazada:", accion, r.status, data);
+    return { ok: r.ok, status: r.status, data, error: data?.error };
   } catch (e) {
     return { ok: false, error: e.message };
   }
