@@ -2926,4 +2926,18 @@ export default function PERApp() {
           )}
           {!loading && !error && nav==="sistema" && (
             <PantallaSistema agentesStatus={agentesStatus} casos={casos} lastUpdate={lastUpdate}/>
-  
+          )}
+          {!loading && !error && nav==="clientes" && <PantallaClientes casos={casos}/>}
+        </div>
+        </ErrorBoundary>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <SignedOut><LoginScreen/></SignedOut>
+      <SignedIn>{dashboard}</SignedIn>
+    </>
+  );
+}
