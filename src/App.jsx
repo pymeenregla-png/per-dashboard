@@ -1281,6 +1281,10 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
     setGN(false);
   }
   function handleAccion(tipo) {
+    if (tipo === "cerrar" && !window.confirm(leccion.trim()
+        ? "¿Cerrar el caso?\n\nEsta lección quedará registrada como Criterio PER y el motor la usará en los próximos casos:\n\n" + leccion.trim().slice(0, 500)
+        : "¿Cerrar el caso sin lección?\n\nNo se registrará ningún criterio. Podrás reabrirlo después si lo necesitas.")) return;
+    if (tipo === "reabrir" && !window.confirm("¿Reabrir el caso " + (caso.id || "") + "?\n\nVolverá a la cola de revisión y quedará registrado en el historial.")) return;
     if (tipo === "aprobar" && nota.trim() &&
         !window.confirm("Se enviará esta respuesta al cliente, firmada por ti:\n\n" + nota.trim().slice(0, 600) + "\n\n¿Aprobar y enviar?")) return;
     onAccion(caso.uuid, tipo, { nota, leccion });
@@ -1361,7 +1365,10 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
                     onMouseLeave={e=>{ e.currentTarget.style.borderColor=DS.border; e.currentTarget.style.color=DS.slateL; }}>🗑</button>
                 </>
               ) : (
-                <Badge label="Caso cerrado ✓" color={DS.green} bg={DS.greenL}/>
+                <>
+                  <Badge label="Caso cerrado ✓" color={DS.green} bg={DS.greenL}/>
+                  <ActionBtn label="Reabrir" color={DS.slate} onClick={()=>handleAccion("reabrir")}/>
+                </>
               )}
             </div>
           </div>
@@ -2090,6 +2097,22 @@ function PantallaCasos({
       if (r.ok) showToast("Solicitud enviada al cliente — caso en espera de info","ok");
       else      showToast("Marcado en espera (revisar webhook per-solicitar-info en n8n)","warn");
       if (soloHITL) autoAvanzar(uuid);
+      return;
+    }
+
+    if (tipo==="reabrir") {
+      const { error: e } = await supabase.from("casos")
+        .update({ cerrado_at: null, borrador_aprobado: false }).eq("id", uuid);
+      const e2 = e || await actualizarEstado(uuid, "HITL");
+      if (e2) { showToast("Error al reabrir: " + (e2.message || ""),"err"); return; }
+      await supabase.from("historial_casos").insert({
+        caso_id: uuid,
+        actor: window.Clerk?.user?.fullName || window.Clerk?.user?.primaryEmailAddress?.emailAddress || "Abogado",
+        tipo_actor: "abogado",
+        mensaje: "Caso reabierto desde el dashboard",
+        metadata: { accion: "reabrir" },
+      });
+      showToast("Caso reabierto: vuelve a la cola de revisión","ok");
       return;
     }
 
