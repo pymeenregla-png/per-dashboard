@@ -1334,6 +1334,10 @@ function CasoDetail({ caso, onAccion, onEditar, onEliminar, flowInfo, focus, set
                   <ActionBtn label="Escalar" color={DS.amber} onClick={()=>handleAccion("escalar")}
                     sugerido={sug?.accion==="escalar"} kbd="E"/>
                   <ActionBtn label="Rechazar" color={DS.red} onClick={()=>handleAccion("rechazar")} kbd="R"/>
+                  {tieneAnalisis && (
+                    <ActionBtn label={procesando ? "Analizando…" : "Reanalizar"} color={DS.purple}
+                      onClick={handleProcesar} disabled={procesando}/>
+                  )}
                   <button onClick={()=>onEditar(caso)} title="Editar"
                     style={{ padding:"7px 9px", borderRadius:7, border:`1px solid ${DS.border}`,
                       background:"transparent", cursor:"pointer", color:DS.slateL, fontSize:13,
@@ -2026,8 +2030,8 @@ function PantallaCasos({
       showToast("Enviando al agente IA…","info");
       await actualizarEstado(uuid,"EN_REVISION");
       const r = await dispararWebhook(WH.procesar, { caso_id:uuid, area:caso.area });
-      if (r.ok) showToast("Agente procesando — se actualizará solo","ok");
-      else showToast("Error al conectar con n8n","err");
+      if (r.ok) showToast(r.data?.mensaje || "Agente procesando — se actualizará solo","ok");
+      else showToast(r.error || "Error al conectar con n8n","err");
       return;
     }
 
@@ -2807,9 +2811,7 @@ export default function PERApp() {
   }
 
   async function handleNuevoCaso(form) {
-    const folio = "PER-" + Math.random().toString(36).substr(2,8).toUpperCase();
-    const { error: e } = await supabase.from("casos").insert({
-      folio,
+    const { data: nuevo, error: e } = await supabase.from("casos").insert({
       contacto_nombre:  form.nombre,
       cliente_empresa:  form.empresa,
       cliente_rut:      form.rut_empresa || "Sin RUT",
@@ -2817,7 +2819,7 @@ export default function PERApp() {
       contacto_tel:     form.telefono,
       area:             form.area,
       kit:              form.kit,
-      canal:            "presencial",
+      canal:            "Presencial",
       prioridad:        form.urgencia==="urgente"?"ALTA":"MEDIA",
       asunto:           form.consulta.substring(0,120),
       consulta_raw:     form.consulta,
@@ -2826,9 +2828,9 @@ export default function PERApp() {
       retro_enviado:    false,
       borrador_aprobado:false,
       ingresado_at:     new Date().toISOString(),
-    });
-    if (e) { showToast("Error al crear caso","err"); return; }
-    showToast(`Caso ${folio} creado`,"ok");
+    }).select("folio").single();
+    if (e) { console.warn("[PER] Error al crear caso:", e); showToast("Error al crear caso: " + (e.message || ""),"err"); return; }
+    showToast(`Caso ${nuevo?.folio || ""} creado`,"ok");
     setModalNuevo(false);
     setNav("revisar");
     await fetchCasos();
@@ -2924,18 +2926,4 @@ export default function PERApp() {
           )}
           {!loading && !error && nav==="sistema" && (
             <PantallaSistema agentesStatus={agentesStatus} casos={casos} lastUpdate={lastUpdate}/>
-          )}
-          {!loading && !error && nav==="clientes" && <PantallaClientes casos={casos}/>}
-        </div>
-        </ErrorBoundary>
-      </div>
-    </div>
-  );
-
-  return (
-    <>
-      <SignedOut><LoginScreen/></SignedOut>
-      <SignedIn>{dashboard}</SignedIn>
-    </>
-  );
-}
+  
